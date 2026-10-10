@@ -6,6 +6,18 @@
     <property name="step-increment">0.050000000000000003</property>
     <property name="page-increment">0.25</property>
   </object>
+  <object class="GtkAdjustment" id="workspace_scroll_delay_adjustment">
+    <property name="lower">0</property>
+    <property name="upper">1000</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="overview_hover_focus_delay_adjustment">
+    <property name="lower">0</property>
+    <property name="upper">2000</property>
+    <property name="step-increment">25</property>
+    <property name="page-increment">100</property>
+  </object>
   <object class="GtkBox" id="box_middle_click_options">
     <property name="can_focus">0</property>
     <property name="margin_start">12</property>
@@ -82,6 +94,7 @@
                           <item translatable="yes">Focus, minimize or show previews</item>
                           <item translatable="yes">Focus, minimize or app spread</item>
                           <item translatable="yes">Quit</item>
+                          <item translatable="yes">Focus or overview</item>
                         </items>
                         <layout>
                           <property name="column">1</property>
@@ -154,6 +167,7 @@
                           <item translatable="yes">Focus, minimize or show previews</item>
                           <item translatable="yes">Focus, minimize or app spread</item>
                           <item translatable="yes">Quit</item>
+                          <item translatable="yes">Focus or overview</item>
                         </items>
                         <layout>
                           <property name="column">1</property>
@@ -226,6 +240,7 @@
                           <item translatable="yes">Focus, minimize or show previews</item>
                           <item translatable="yes">Focus, minimize or app spread</item>
                           <item translatable="yes">Quit</item>
+                          <item translatable="yes">Focus or overview</item>
                         </items>
                         <layout>
                           <property name="column">1</property>
@@ -601,6 +616,32 @@
                                     <signal name="toggled" handler="position_right_button_toggled_cb" />
                                   </object>
                                 </child>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkListBoxRow" id="auto_avoid_joined_monitor_row">
+                        <property name="child">
+                          <object class="GtkBox">
+                            <property name="margin_start">12</property>
+                            <property name="margin_end">12</property>
+                            <property name="margin_top">12</property>
+                            <property name="margin_bottom">12</property>
+                            <property name="spacing">16</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="label" translatable="yes">Move dock away from joined monitor</property>
+                                <property name="hexpand">1</property>
+                                <property name="xalign">0</property>
+                                <property name="wrap">1</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkSwitch" id="auto_avoid_joined_monitor_switch">
+                                <property name="valign">center</property>
                               </object>
                             </child>
                           </object>
@@ -1037,6 +1078,162 @@
                       </object>
                     </child>
                     <child>
+                      <object class="GtkListBoxRow" id="adaptive_app_order_row">
+                        <property name="child">
+                          <object class="GtkGrid">
+                            <property name="can_focus">0</property>
+                            <property name="margin_start">12</property>
+                            <property name="margin_end">12</property>
+                            <property name="margin_top">12</property>
+                            <property name="margin_bottom">12</property>
+                            <property name="column_spacing">32</property>
+                            <child>
+                              <object class="GtkSwitch" id="adaptive_app_order_switch">
+                                <property name="halign">end</property>
+                                <property name="valign">center</property>
+                                <layout>
+                                  <property name="column">1</property>
+                                  <property name="row">0</property>
+                                  <property name="row-span">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Order running applications by usage</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">0</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Use GNOME Shell's persistent usage ranking, then oldest relevant window creation order. Running pinned apps join the dynamic section.</property>
+                                <property name="wrap">1</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">1</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="adaptive_app_order_lock_check">
+                                <property name="label" translatable="yes">Disable manual icon reordering in adaptive mode</property>
+                                <property name="halign">start</property>
+                                <property name="margin_top">12</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">2</property>
+                                  <property name="column-span">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkListBoxRow" id="overview_hover_focus_row">
+                        <property name="child">
+                          <object class="GtkGrid">
+                            <property name="can_focus">0</property>
+                            <property name="margin_start">12</property>
+                            <property name="margin_end">12</property>
+                            <property name="margin_top">12</property>
+                            <property name="margin_bottom">12</property>
+                            <property name="column_spacing">32</property>
+                            <property name="row_spacing">6</property>
+                            <child>
+                              <object class="GtkSwitch" id="overview_hover_focus_switch">
+                                <property name="halign">end</property>
+                                <property name="valign">center</property>
+                                <layout>
+                                  <property name="column">1</property>
+                                  <property name="row">0</property>
+                                  <property name="row-span">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Focus application in overview on hover</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">0</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Hover a grouped running-app icon to preview its representative window and workspace without closing the overview.</property>
+                                <property name="wrap">1</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">1</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="overview_hover_focus_delay_label">
+                                <property name="can_focus">0</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Hover delay (ms)</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkSpinButton" id="overview_hover_focus_delay_spinbutton">
+                                <property name="adjustment">overview_hover_focus_delay_adjustment</property>
+                                <property name="numeric">1</property>
+                                <property name="valign">center</property>
+                                <property name="width_chars">5</property>
+                                <layout>
+                                  <property name="column">1</property>
+                                  <property name="row">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkCheckButton" id="overview_hover_focus_switch_workspace_check">
+                                <property name="label" translatable="yes">Switch to the application's workspace before focusing</property>
+                                <property name="halign">start</property>
+                                <property name="margin_top">6</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">3</property>
+                                  <property name="column-span">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkListBoxRow">
                         <property name="child">
                           <object class="GtkGrid">
@@ -1066,6 +1263,59 @@
                                 <layout>
                                   <property name="column">0</property>
                                   <property name="row">0</property>
+                                </layout>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkListBoxRow" id="adaptive_apps_only_when_crowded_row">
+                        <property name="child">
+                          <object class="GtkGrid">
+                            <property name="can_focus">0</property>
+                            <property name="margin_start">12</property>
+                            <property name="margin_end">12</property>
+                            <property name="margin_top">12</property>
+                            <property name="margin_bottom">12</property>
+                            <property name="column_spacing">32</property>
+                            <child>
+                              <object class="GtkSwitch" id="adaptive_apps_only_when_crowded_switch">
+                                <property name="halign">end</property>
+                                <property name="valign">center</property>
+                                <layout>
+                                  <property name="column">1</property>
+                                  <property name="row">0</property>
+                                  <property name="row-span">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Prioritize applications when dock is crowded</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">0</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="label" translatable="yes">Hides Show Applications, Trash, and volumes or devices before application icons are reduced or scrolling becomes necessary.</property>
+                                <property name="wrap">1</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">1</property>
                                 </layout>
                               </object>
                             </child>
@@ -1692,6 +1942,7 @@
                                       <item translatable="yes">Focus or app spread</item>
                                       <item translatable="yes">Focus, minimize or show previews</item>
                                       <item translatable="yes">Focus, minimize or app spread</item>
+                                      <item translatable="yes">Focus or overview</item>
                                     </items>
                                   </object>
                                 </child>
@@ -1794,6 +2045,48 @@
                                 <layout>
                                   <property name="column">1</property>
                                   <property name="row">0</property>
+                                  <property name="row-span">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="workspace_scroll_delay_label">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Workspace switch delay (ms)</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="workspace_scroll_delay_description">
+                                <property name="can_focus">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Minimum dead time between workspace switches while scrolling the dock. 0 disables throttling.</property>
+                                <property name="wrap">1</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">3</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkSpinButton" id="workspace_scroll_delay_spinbutton">
+                                <property name="adjustment">workspace_scroll_delay_adjustment</property>
+                                <property name="numeric">1</property>
+                                <property name="valign">center</property>
+                                <property name="width_chars">5</property>
+                                <layout>
+                                  <property name="column">1</property>
+                                  <property name="row">2</property>
                                   <property name="row-span">2</property>
                                 </layout>
                               </object>

@@ -1,5 +1,9 @@
 {
-"shell-version": [
+  "description": "A dock for the Gnome Shell. This extension moves the dash out of the overview transforming it in a dock for an easier launching of applications and a faster switching between windows and desktops. Side and bottom placement options are available.\n\nAdaptive build: GNOME AppUsage-based running-app ordering aligned with the Eidrien adaptive workspace system, drop-level manual reorder locking, configurable high-speed workspace scroll timing, overview hover focus for grouped application icons, and staged app-first crowding that removes secondary dock items before shrinking application targets or scrolling.",
+  "gettext-domain": "dashtodock",
+  "name": "Dash to Dock (Adaptive Build)",
+  "original-author": "micxgx@gmail.com",
+  "shell-version": [
     "45",
     "46",
     "47",
@@ -7,12 +11,9 @@
     "49",
     "50",
     "51"
-],
-"uuid": "dash-to-dock@micxgx.gmail.com",
-"name": "Dash to Dock",
-"description": "A dock for the Gnome Shell. This extension moves the dash out of the overview transforming it in a dock for an easier launching of applications and a faster switching between windows and desktops. Side and bottom placement options are available.",
-"original-author": "micxgx@gmail.com",
-"url": "https://micheleg.github.io/dash-to-dock/",
-"gettext-domain": "dashtodock",
-"version": 110
+  ],
+  "url": "https://github.com/IAmEidrien/dash-to-dock-adaptive",
+  "uuid": "dash-to-dock-adaptive@eidrien.local",
+  "version": 110,
+  "version-name": "110-adaptive8"
 }

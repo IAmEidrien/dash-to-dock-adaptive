@@ -445,6 +445,10 @@ const DockSettings = GObject.registerClass({
             this._builder.get_object('position_right_button').set_label(__('Left'));
         }
 
+        this._settings.bind('auto-avoid-joined-monitor',
+            this._builder.get_object('auto_avoid_joined_monitor_switch'),
+            'active', Gio.SettingsBindFlags.DEFAULT);
+
         // Intelligent autohide options
         this._settings.bind('dock-fixed',
             this._builder.get_object('intelligent_autohide_switch'),
@@ -644,6 +648,40 @@ const DockSettings = GObject.registerClass({
             this._builder.get_object('show_running_switch'),
             'active',
             Gio.SettingsBindFlags.DEFAULT);
+        this._settings.bind('adaptive-app-order',
+            this._builder.get_object('adaptive_app_order_switch'),
+            'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        this._settings.bind('adaptive-app-order-lock',
+            this._builder.get_object('adaptive_app_order_lock_check'),
+            'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        this._settings.bind('adaptive-app-order',
+            this._builder.get_object('adaptive_app_order_lock_check'),
+            'sensitive',
+            Gio.SettingsBindFlags.DEFAULT);
+        this._settings.bind('focus-overview-app-on-hover',
+            this._builder.get_object('overview_hover_focus_switch'),
+            'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        this._settings.bind('focus-overview-app-hover-delay',
+            this._builder.get_object('overview_hover_focus_delay_spinbutton'),
+            'value',
+            Gio.SettingsBindFlags.DEFAULT);
+        this._settings.bind('focus-overview-app-hover-switch-workspace',
+            this._builder.get_object('overview_hover_focus_switch_workspace_check'),
+            'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        for (const id of [
+            'overview_hover_focus_delay_label',
+            'overview_hover_focus_delay_spinbutton',
+            'overview_hover_focus_switch_workspace_check',
+        ]) {
+            this._settings.bind('focus-overview-app-on-hover',
+                this._builder.get_object(id),
+                'sensitive',
+                Gio.SettingsBindFlags.DEFAULT);
+        }
         const applicationButtonIsolationButton =
             this._builder.get_object('application_button_isolation_button');
         const applicationButtonIsolationLabel =
@@ -697,6 +735,10 @@ const DockSettings = GObject.registerClass({
             Gio.SettingsBindFlags.DEFAULT);
         this._settings.bind('show-favorites',
             this._builder.get_object('show_favorite_switch'),
+            'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        this._settings.bind('adaptive-apps-only-when-crowded',
+            this._builder.get_object('adaptive_apps_only_when_crowded_switch'),
             'active',
             Gio.SettingsBindFlags.DEFAULT);
         this._settings.bind('show-trash',
@@ -806,9 +848,18 @@ const DockSettings = GObject.registerClass({
             'sensitive',
             Gio.SettingsBindFlags.DEFAULT);
 
-        this._builder.get_object('click_action_combo').set_active(this._settings.get_enum('click-action'));
+        // Quit (11) is intentionally absent from the primary-click menu.
+        const clickAction = this._settings.get_enum('click-action');
+        let clickActionIndex = clickAction;
+        if (clickAction === 12)
+            clickActionIndex = 11;
+        else if (clickAction === 11)
+            clickActionIndex = -1;
+        this._builder.get_object('click_action_combo').set_active(clickActionIndex);
         this._builder.get_object('click_action_combo').connect('changed', widget => {
-            this._settings.set_enum('click-action', widget.get_active());
+            const selected = widget.get_active();
+            if (selected >= 0)
+                this._settings.set_enum('click-action', selected === 11 ? 12 : selected);
         });
 
         this._builder.get_object('icon_size_fixed_checkbutton').connect('toggled', () => {
@@ -820,16 +871,31 @@ const DockSettings = GObject.registerClass({
         this._builder.get_object('scroll_action_combo').connect('changed', widget => {
             this._settings.set_enum('scroll-action', widget.get_active());
         });
+        this._settings.bind('workspace-scroll-delay',
+            this._builder.get_object('workspace_scroll_delay_spinbutton'),
+            'value',
+            Gio.SettingsBindFlags.DEFAULT);
+
+        const updateWorkspaceScrollDelaySensitivity = () => {
+            this._builder.get_object('workspace_scroll_delay_spinbutton').sensitive =
+                this._settings.get_enum('scroll-action') === 2;
+        };
+        updateWorkspaceScrollDelaySensitivity();
+        this._settings.connect('changed::scroll-action',
+            updateWorkspaceScrollDelaySensitivity);
 
         this._builder.get_object('shift_click_action_combo').connect('changed', widget => {
-            this._settings.set_enum('shift-click-action', widget.get_active());
+            if (widget.get_active() >= 0)
+                this._settings.set_enum('shift-click-action', widget.get_active());
         });
 
         this._builder.get_object('middle_click_action_combo').connect('changed', widget => {
-            this._settings.set_enum('middle-click-action', widget.get_active());
+            if (widget.get_active() >= 0)
+                this._settings.set_enum('middle-click-action', widget.get_active());
         });
         this._builder.get_object('shift_middle_click_action_combo').connect('changed', widget => {
-            this._settings.set_enum('shift-middle-click-action', widget.get_active());
+            if (widget.get_active() >= 0)
+                this._settings.set_enum('shift-middle-click-action', widget.get_active());
         });
 
         // Create dialog for number overlay options
@@ -915,19 +981,6 @@ const DockSettings = GObject.registerClass({
 
             this._builder.get_object('shift_middle_click_action_combo').set_active(
                 this._settings.get_enum('shift-middle-click-action'));
-
-            this._settings.bind('shift-click-action',
-                this._builder.get_object('shift_click_action_combo'),
-                'active-id',
-                Gio.SettingsBindFlags.DEFAULT);
-            this._settings.bind('middle-click-action',
-                this._builder.get_object('middle_click_action_combo'),
-                'active-id',
-                Gio.SettingsBindFlags.DEFAULT);
-            this._settings.bind('shift-middle-click-action',
-                this._builder.get_object('shift_middle_click_action_combo'),
-                'active-id',
-                Gio.SettingsBindFlags.DEFAULT);
 
             dialog.connect('response', (_, id) => {
                 if (id === 1) {

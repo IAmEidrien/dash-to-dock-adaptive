@@ -43,6 +43,7 @@ import {
 import {Extension} from './dependencies/shell/extensions/extension.js';
 
 import {StrutsManager} from './dockStruts.js';
+import {FileDragFocus} from './fileDragFocus.js';
 
 // Use __ () and N__() for the extension gettext domain, and reuse
 // the shell domain with the default _() and N_()
@@ -500,6 +501,10 @@ const DockedDash = GObject.registerClass({
                 (this.translation_y = -this.height));
         }
 
+        this._fileDragFocus = new FileDragFocus(
+            actor => this.dash.getAppIconAtActor(actor),
+            () => this._isVisibleForFileDrag());
+
         this._updateVisibilityMode();
 
         // In case we are already inside the overview when the extension is loaded,
@@ -511,6 +516,8 @@ const DockedDash = GObject.registerClass({
     }
 
     _onDestroy() {
+        this._fileDragFocus.destroy();
+
         // The dash, intellihide and themeManager have global signals as well internally
         this.dash.destroy();
         this._intellihide.destroy();
@@ -774,6 +781,17 @@ const DockedDash = GObject.registerClass({
         }
 
         this.updateDashVisibility();
+    }
+
+    _isVisibleForFileDrag() {
+        const {settings} = DockManager;
+        if (settings.manualhide || this.dockState !== State.SHOWN)
+            return false;
+
+        // An autohide peek, popup, or temporary accessibility reveal must not
+        // turn crossing a launcher with a file into a window-switch action.
+        return settings.dockFixed || (this.intellihideEnabled &&
+            !this._intellihide.getOverlapStatus());
     }
 
     /**
@@ -1498,17 +1516,20 @@ const DockedDash = GObject.registerClass({
             }
 
             if (direction) {
-                // Prevent scroll events from triggering too many workspace switches
-                // by adding a 250ms dead time between each scroll event.
-                // Useful on laptops when using a touch pad.
+                // Prevent one wheel gesture from triggering an unwanted burst of
+                // workspace switches. The upstream fixed 250 ms dead time is far
+                // too conservative for a fast mouse-first Wayland workflow, so the
+                // private adaptive build exposes this as a preference.
+                const scrollDelay = Math.max(0, DockManager.settings.workspaceScrollDelay);
 
-                // During the deadtime do nothing
-                if (this._optionalScrollWorkspaceSwitchDeadTimeId) {
+                if (this._optionalScrollWorkspaceSwitchDeadTimeId)
                     return false;
-                } else {
+
+                if (scrollDelay > 0) {
                     this._optionalScrollWorkspaceSwitchDeadTimeId = GLib.timeout_add(
-                        GLib.PRIORITY_DEFAULT, 250, () => {
+                        GLib.PRIORITY_DEFAULT, scrollDelay, () => {
                             this._optionalScrollWorkspaceSwitchDeadTimeId = 0;
+                            return GLib.SOURCE_REMOVE;
                         });
                 }
 
@@ -2171,6 +2192,10 @@ export class DockManager {
         ], [
             this._settings,
             'changed::dock-position',
+            this._toggle.bind(this),
+        ], [
+            this._settings,
+            'changed::auto-avoid-joined-monitor',
             this._toggle.bind(this),
         ], [
             this._settings,

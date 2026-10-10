@@ -171,6 +171,12 @@ export const DockDash = GObject.registerClass({
         this._resetHoverTimeoutId = 0;
         this._labelShowing = false;
 
+        // Adaptive 3: when the full requested dock would overflow, secondary
+        // items can be temporarily suppressed so applications get first claim
+        // on the available space. This is presentation state only; the user's
+        // Show Applications / Trash / Mounts preferences remain untouched.
+        this._adaptiveAppsOnlyMode = false;
+
         this._dashContainer = new St.BoxLayout({
             name: 'dashtodockDashContainer',
             x_align: Clutter.ActorAlign.CENTER,
@@ -268,6 +274,7 @@ export const DockDash = GObject.registerClass({
         });
 
         this._appSystem = Shell.AppSystem.get_default();
+        this._appUsage = Shell.AppUsage.get_default();
 
         this.iconAnimator = new Docking.IconAnimator(this);
 
@@ -285,6 +292,22 @@ export const DockDash = GObject.registerClass({
         ], [
             this._appSystem,
             'app-state-changed',
+            this._queueRedisplay.bind(this),
+        ], [
+            Docking.DockManager.settings,
+            'changed::adaptive-app-order',
+            this._queueRedisplay.bind(this),
+        ], [
+            Docking.DockManager.settings,
+            'changed::adaptive-apps-only-when-crowded',
+            this._queueRedisplay.bind(this),
+        ], [
+            Docking.DockManager.settings,
+            'changed::show-show-apps-button',
+            this._queueRedisplay.bind(this),
+        ], [
+            Docking.DockManager.settings,
+            'changed::show-apps-always-in-the-edge',
             this._queueRedisplay.bind(this),
         ], [
             Main.overview,
@@ -399,7 +422,25 @@ export const DockDash = GObject.registerClass({
         return Dash.Dash.prototype._clearEmptyDropTarget.call(this, ...args);
     }
 
+    _isAdaptiveOrderLockedDrag(source) {
+        const {settings} = Docking.DockManager;
+        if (!settings.adaptiveAppOrder || !settings.adaptiveAppOrderLock)
+            return false;
+
+        // Keep the lock at Dash-to-Dock's drop-policy layer instead of reaching
+        // into GNOME Shell's private Draggable implementation. This blocks
+        // reordering icons that already belong to this dock while leaving normal
+        // click handling and external app-grid drags alone.
+        return this._box.get_children().some(actor => {
+            const delegate = actor.child?._delegate;
+            return delegate === source || delegate === source?._delegate;
+        });
+    }
+
     handleDragOver(source, actor, x, y, time) {
+        if (this._isAdaptiveOrderLockedDrag(source))
+            return DND.DragMotionResult.NO_DROP;
+
         let ret;
         if (this._isHorizontal) {
             ret = Dash.Dash.prototype.handleDragOver.call(this, source, actor, x, y, time);
@@ -461,6 +502,9 @@ export const DockDash = GObject.registerClass({
     }
 
     acceptDrop(...args) {
+        if (this._isAdaptiveOrderLockedDrag(args[0]))
+            return false;
+
         return Dash.Dash.prototype.acceptDrop.call(this, ...args);
     }
 
@@ -531,6 +575,52 @@ export const DockDash = GObject.registerClass({
             GLib.source_remove(this._ensureActorVisibilityTimeoutId);
             this._ensureActorVisibilityTimeoutId = 0;
         }
+    }
+
+    _getAppRawStableSequence(app) {
+        if (!app)
+            return Infinity;
+
+        const windows = AppIcons.getInterestingWindows(
+            app.get_windows(), this._monitorIndex);
+
+        return windows.reduce((previous, window) =>
+            Math.min(previous, window.get_stable_sequence()), Infinity);
+    }
+
+    _compareAppsByUsage(appA, appB) {
+        if (appA === appB)
+            return 0;
+
+        const appIdA = appA?.get_id?.() ?? '';
+        const appIdB = appB?.get_id?.() ?? '';
+
+        if (appIdA && appIdB) {
+            const usageOrder = this._appUsage.compare(appIdA, appIdB);
+            if (usageOrder)
+                return usageOrder;
+        }
+
+        const sequenceOrder =
+            this._getAppRawStableSequence(appA) -
+            this._getAppRawStableSequence(appB);
+        if (sequenceOrder)
+            return sequenceOrder;
+
+        return (appIdA || appA?.get_name?.() || '').localeCompare(
+            appIdB || appB?.get_name?.() || '');
+    }
+
+    getAppIconAtActor(actor) {
+        if (!actor || !this._box.contains(actor))
+            return null;
+
+        for (let current = actor; current && current !== this._box; current = current.get_parent()) {
+            if (current._delegate instanceof AppIcons.DockAbstractAppIcon)
+                return current._delegate;
+        }
+
+        return null;
     }
 
     _createAppItem(app) {
@@ -643,6 +733,144 @@ export const DockDash = GObject.registerClass({
         }
     }
 
+    _isSecondaryDockApp(app) {
+        return !!(app?.isTrash || app?.location);
+    }
+
+    _dockWouldExceedIconSize(appCount, includeShowApps, hasSeparator,
+        logicalIconSize) {
+        const itemCount = appCount + (includeShowApps ? 1 : 0);
+        if (itemCount <= 0 ||
+            (this._maxWidth === -1 && this._maxHeight === -1) ||
+            !this._container.get_stage())
+            return false;
+
+        const themeNode = this._dashContainer.get_theme_node();
+        const maxAllocation = new Clutter.ActorBox({
+            x1: 0,
+            y1: 0,
+            x2: this._isHorizontal ? this._maxWidth : 42,
+            y2: this._isHorizontal ? 42 : this._maxHeight,
+        });
+        const maxContent = themeNode.get_content_box(maxAllocation);
+        const availSpace = this._isHorizontal
+            ? maxContent.get_width()
+            : maxContent.get_height();
+        // The icons live in _box, not directly in _dashContainer. In
+        // particular, themes can give each DashItemContainer its own margins.
+        // Measuring only the inner button underestimated a crowded dock by
+        // several pixels per application, so Show Applications remained visible
+        // after the complete row had already run out of space.
+        const spacing = Math.max(themeNode.get_length('spacing'),
+            this._box.get_theme_node().get_length('spacing'));
+
+        // Measure theme padding from a real dock button, just as
+        // _adjustIconSize() does. The padding is effectively independent from
+        // logical icon size, so the full requested layout can be evaluated at
+        // a specific candidate size instead of whatever size happens to be
+        // rendered right now.
+        const currentIconActor = this._box.get_children().find(actor =>
+            actor.child &&
+            actor.child._delegate &&
+            actor.child._delegate.icon &&
+            !actor.animatingOut) ?? this._showAppsIcon;
+        const firstIcon = currentIconActor?.child?.icon?.child ??
+            currentIconActor?.icon?.child;
+        if (!firstIcon)
+            return false;
+
+        firstIcon.ensure_style();
+        const [, , iconWidth, iconHeight] = firstIcon.get_preferred_size();
+        const [, , itemWidth, itemHeight] = currentIconActor.get_preferred_size();
+        const currentIconLength = this._isHorizontal ? iconWidth : iconHeight;
+        const itemLength = this._isHorizontal ? itemWidth : itemHeight;
+        const itemExtra = Math.max(0, itemLength - currentIconLength);
+
+        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+        const candidateIconSize = logicalIconSize * scaleFactor;
+        let requiredSpace = itemCount * (candidateIconSize + itemExtra) +
+            Math.max(0, itemCount - 1) * spacing;
+
+        if (includeShowApps) {
+            // The Show Applications tile can have different margins or padding
+            // from an app tile, especially when pinned to the dock edge.
+            const showAppsIcon = this._showAppsIcon.icon?.child;
+            if (showAppsIcon) {
+                const [, , showIconWidth, showIconHeight] =
+                    showAppsIcon.get_preferred_size();
+                const [, , showItemWidth, showItemHeight] =
+                    this._showAppsIcon.get_preferred_size();
+                const showIconLength = this._isHorizontal
+                    ? showIconWidth : showIconHeight;
+                const showItemLength = this._isHorizontal
+                    ? showItemWidth : showItemHeight;
+                requiredSpace += Math.max(0,
+                    showItemLength - showIconLength - itemExtra);
+            }
+        }
+
+        if (hasSeparator) {
+            let separatorLength = this._isHorizontal
+                ? Math.max(1, scaleFactor)
+                : candidateIconSize;
+            if (this._separator) {
+                const [, , separatorWidth, separatorHeight] =
+                    this._separator.get_preferred_size();
+                separatorLength = this._isHorizontal
+                    ? separatorWidth
+                    : separatorHeight + Math.max(0,
+                        candidateIconSize - this.iconSize * scaleFactor);
+            }
+            requiredSpace += separatorLength + spacing;
+        }
+
+        // A tiny hysteresis keeps a one-pixel allocation/scale rounding change
+        // from repeatedly switching the dock between normal and apps-only mode.
+        const hysteresis = 4 * scaleFactor;
+        const threshold = this._adaptiveAppsOnlyMode
+            ? availSpace - hysteresis
+            : availSpace;
+        return requiredSpace > threshold;
+    }
+
+    _shouldUseAdaptiveAppsOnlyMode(fullApps, staticFavoriteCount) {
+        const {settings} = Docking.DockManager;
+        if (!settings.adaptiveAppsOnlyWhenCrowded)
+            return false;
+
+        const secondaryApps = fullApps.filter(app => this._isSecondaryDockApp(app));
+        const includeShowApps = !Main.overview.isDummy && settings.showShowAppsButton;
+
+        // There is nothing to suppress, so apps-only mode would have no effect.
+        if (!secondaryApps.length && !includeShowApps)
+            return false;
+
+        const hasSeparator = staticFavoriteCount > 0 &&
+            staticFavoriteCount < fullApps.length;
+
+        // Adaptive 4 gives application target size priority over secondary
+        // dock content. Evaluate the *complete* requested dock at the user's
+        // preferred/max icon size, not at Dash-to-Dock's smallest shrink size.
+        // If that full layout does not fit, secondary items disappear first.
+        // _adjustIconSize() then works on the apps-only layout: it preserves the
+        // preferred size when possible, shrinks only when applications alone
+        // need more room, and finally lets the scroll view handle overflow once
+        // even the minimum icon size cannot fit.
+        const preferredIconSize =
+            this._availableIconSizes[this._availableIconSizes.length - 1] ?? this.iconSize;
+        return this._dockWouldExceedIconSize(
+            fullApps.length, includeShowApps, hasSeparator, preferredIconSize);
+    }
+
+    _syncShowAppsButtonForCrowding() {
+        const {settings} = Docking.DockManager;
+        if (!Main.overview.isDummy && settings.showShowAppsButton &&
+            !this._adaptiveAppsOnlyMode)
+            this.showShowAppsButton();
+        else
+            this.hideShowAppsButton();
+    }
+
     _adjustIconSize() {
         // For the icon size, we only consider children which are "proper"
         // icons (i.e. ignoring drag placeholders) and which are not
@@ -655,7 +883,14 @@ export const DockDash = GObject.registerClass({
                    !actor.animatingOut;
         });
 
-        iconChildren.push(this._showAppsIcon);
+        // Adaptive 4 uses a staged degradation policy. Secondary items are
+        // removed before icon resizing begins, so once apps-only mode is active
+        // the standard Dash-to-Dock sizing algorithm operates only on primary
+        // application targets. If they fit at the preferred size they stay
+        // large; otherwise they shrink through the normal size ladder, and the
+        // scroll view remains the final fallback at the minimum size.
+        if (!this._adaptiveAppsOnlyMode)
+            iconChildren.push(this._showAppsIcon);
 
         if (this._maxWidth === -1 && this._maxHeight === -1)
             return;
@@ -820,29 +1055,59 @@ export const DockDash = GObject.registerClass({
         // Apps supposed to be in the dash
         const newApps = [];
 
-        const {showFavorites} = settings;
-        if (showFavorites)
-            newApps.push(...Object.values(favorites));
+        const {showFavorites, showRunning, adaptiveAppOrder} = settings;
+        const favoriteApps = Object.values(favorites);
+        let staticFavoriteCount = 0;
 
-        if (settings.showRunning) {
-            // We reorder the running apps so that they don't change position on the
-            // dash with every redisplay() call
+        if (adaptiveAppOrder) {
+            // Match the Adaptive Desktop ordering policy: running applications
+            // use GNOME Shell's persistent AppUsage rank, then oldest relevant
+            // window creation order, then app ID/name as a deterministic fallback.
+            // Running favorites participate in that same dynamic section; only
+            // inactive favorites remain pinned ahead of it.
+            const runningSet = new Set(running);
 
-            // First: add the apps from the oldApps list that are still running
-            oldApps.forEach(oldApp => {
-                const index = running.indexOf(oldApp);
-                if (index > -1) {
-                    const [app] = running.splice(index, 1);
-                    if (!showFavorites || !(app.get_id() in favorites))
+            if (showFavorites) {
+                const staticFavorites = showRunning
+                    ? favoriteApps.filter(app => !runningSet.has(app))
+                    : favoriteApps;
+                newApps.push(...staticFavorites);
+                staticFavoriteCount = staticFavorites.length;
+            }
+
+            if (showRunning) {
+                running.sort(this._compareAppsByUsage.bind(this));
+                for (const app of running) {
+                    if (!newApps.includes(app))
                         newApps.push(app);
                 }
-            });
+            }
+        } else {
+            if (showFavorites) {
+                newApps.push(...favoriteApps);
+                staticFavoriteCount = favoriteApps.length;
+            }
 
-            // Second: add the new apps
-            running.forEach(app => {
-                if (!showFavorites || !(app.get_id() in favorites))
-                    newApps.push(app);
-            });
+            if (showRunning) {
+                // Upstream behavior: retain the existing running-app positions so
+                // redisplay() itself does not continuously reshuffle the dock.
+
+                // First: add the apps from the oldApps list that are still running
+                oldApps.forEach(oldApp => {
+                    const index = running.indexOf(oldApp);
+                    if (index > -1) {
+                        const [app] = running.splice(index, 1);
+                        if (!showFavorites || !(app.get_id() in favorites))
+                            newApps.push(app);
+                    }
+                });
+
+                // Second: add the new apps
+                running.forEach(app => {
+                    if (!showFavorites || !(app.get_id() in favorites))
+                        newApps.push(app);
+                });
+            }
         }
 
         this._signalsHandler.removeWithLabel(Labels.SHOW_MOUNTS);
@@ -864,6 +1129,21 @@ export const DockDash = GObject.registerClass({
         } else {
             oldApps = oldApps.filter(app => !app.isTrash);
         }
+
+        // Adaptive 3 crowding policy: make the decision from the complete
+        // user-requested layout, then remove all secondary app-like entries as
+        // a single class. Because the decision is based on the *full* layout
+        // even while secondary items are hidden, removing them cannot make the
+        // feature immediately switch itself back off.
+        this._adaptiveAppsOnlyMode = this._shouldUseAdaptiveAppsOnlyMode(
+            newApps, staticFavoriteCount);
+        if (this._adaptiveAppsOnlyMode) {
+            for (let i = newApps.length - 1; i >= 0; i--) {
+                if (this._isSecondaryDockApp(newApps[i]))
+                    newApps.splice(i, 1);
+            }
+        }
+        this._syncShowAppsButtonForCrowding();
 
         // Temporary remove the separator so that we don't compute to position icons
         const oldSeparatorPos = this._box.get_children().indexOf(this._separator);
@@ -960,8 +1240,9 @@ export const DockDash = GObject.registerClass({
                 item.destroy();
         }
 
-        // Update separator
-        const nFavorites = Object.keys(favorites).length;
+        // Update separator. In adaptive mode, running favorites live in the
+        // dynamic section, so only truly static favorite launchers count here.
+        const nFavorites = staticFavoriteCount;
         const nIcons = children.length + addedItems.length - removedActors.length;
         if (nFavorites > 0 && nFavorites < nIcons) {
             if (!this._separator) {
@@ -1080,6 +1361,11 @@ export const DockDash = GObject.registerClass({
     }
 
     showShowAppsButton() {
+        if (this._adaptiveAppsOnlyMode) {
+            this._showAppsIcon.visible = false;
+            return;
+        }
+
         this._showAppsIcon.visible = true;
         this._showAppsIcon.show(true);
         this.updateShowAppsButton();

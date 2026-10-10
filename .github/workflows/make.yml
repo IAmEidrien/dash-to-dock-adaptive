@@ -4,6 +4,7 @@ name: Make
   pull_request:
   push:
     branches:
+      - main
       - master
       - ubuntu-dock
       - make_ci
@@ -59,4 +60,3 @@ jobs:
         with:
           path: extension.zip
           baseline: shexli-baseline.json
-

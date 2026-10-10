@@ -7,3 +7,9 @@ po/dashtodock.pot
 stylesheet.css
 Settings.ui.h
 _build
+
+# Runtime artifacts are tracked for Gitpulsar pull-to-update installations.
+!stylesheet.css
+!locale/**/LC_MESSAGES/dashtodock.mo
+dash-to-dock-adaptive@eidrien.local*.zip
+.DS_Store

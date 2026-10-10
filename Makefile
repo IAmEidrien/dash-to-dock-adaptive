@@ -1,16 +1,18 @@
 # Basic Makefile
 
-UUID = dash-to-dock@micxgx.gmail.com
+UUID = dash-to-dock-adaptive@eidrien.local
 BASE_MODULES = extension.js \
                metadata.json \
                COPYING \
                README.md \
+               ADAPTIVE-BUILD.md \
                $(NULL)
 
 EXTRA_MODULES = \
                 appSpread.js \
                 dash.js \
                 docking.js \
+                fileDragFocus.js \
                 appIcons.js \
                 appIconsDecorator.js \
                 appIconIndicators.js \
@@ -46,7 +48,7 @@ else
 	SHARE_PREFIX = $(DESTDIR)/usr/share
 	INSTALLBASE = $(SHARE_PREFIX)/gnome-shell/extensions
 endif
-INSTALLNAME = dash-to-dock@micxgx.gmail.com
+INSTALLNAME = $(UUID)
 
 # The command line passed variable VERSION is used to set the version string
 # in the metadata and in the generated zip-file. If no VERSION is passed, the
@@ -67,6 +69,14 @@ clean:
 	rm -rf _build
 
 extension: ./schemas/gschemas.compiled ./stylesheet.css $(MSGSRC:.po=.mo)
+
+# Keep the directly installable, Git-managed runtime translations current.
+refresh-runtime: extension
+	for l in $(MSGSRC:.po=.mo); do \
+		lf=locale/`basename $$l .mo`/LC_MESSAGES; \
+		mkdir -p $$lf; \
+		cp $$l $$lf/dashtodock.mo; \
+	done
 
 ./schemas/gschemas.compiled: ./schemas/org.gnome.shell.extensions.dash-to-dock.gschema.xml
 	glib-compile-schemas ./schemas/
@@ -101,6 +111,10 @@ endif
 install: install-local
 
 install-local: _build
+	@if test -e "$(INSTALLBASE)/$(INSTALLNAME)/.git"; then \
+		echo "Refusing to replace a Git-managed extension checkout. Use git pull and recompile schemas there; see GIT-WORKFLOW.md."; \
+		exit 1; \
+	fi
 	rm -rf $(INSTALLBASE)/$(INSTALLNAME)
 	mkdir -p $(INSTALLBASE)/$(INSTALLNAME)
 	cp -r ./_build/* $(INSTALLBASE)/$(INSTALLNAME)/
@@ -149,5 +163,9 @@ ifneq ($(strip $(ESLINT_TAP)),)
     ESLINT_ARGS = -f tap
 endif
 
-check:
+check: test
 	ESLINT_USE_FLAT_CONFIG=false $(ESLINT) $(ESLINT_ARGS) .
+
+.PHONY: test check refresh-runtime
+test:
+	node --test tests/*.test.mjs

@@ -11,6 +11,7 @@ import {
 import {
     Docking,
 } from './imports.js';
+import {Main} from './dependencies/shell/ui.js';
 
 // Dash to dock supports replacing vfuncs in GObject classes and we need
 // this to monkey them.
@@ -525,12 +526,54 @@ export class PropertyInjectionsHandler extends BasicHandler {
  * Return the actual position reverseing left and right in rtl
  */
 export function getPosition() {
-    const position = Docking.DockManager.settings.dockPosition;
+    const settings = Docking.DockManager.settings;
+    let position = settings.dockPosition;
     if (Clutter.get_default_text_direction() === Clutter.TextDirection.RTL) {
         if (position === St.Side.LEFT)
-            return St.Side.RIGHT;
+            position = St.Side.RIGHT;
         else if (position === St.Side.RIGHT)
-            return St.Side.LEFT;
+            position = St.Side.LEFT;
+    }
+
+    // An adjoining display turns this edge into an internal boundary. Keep the
+    // saved preference and use the opposite physical edge until it disconnects.
+    if (settings.autoAvoidJoinedMonitor && !settings.multiMonitor) {
+        const monitors = Main.layoutManager.monitors;
+        const index = Docking.DockManager.getDefault()?._preferredMonitorIndex ??
+            Main.layoutManager.primaryIndex;
+        const monitor = monitors[index];
+        if (monitor) {
+            const verticalOverlap = other =>
+                Math.min(monitor.y + monitor.height, other.y + other.height) >
+                Math.max(monitor.y, other.y);
+            const horizontalOverlap = other =>
+                Math.min(monitor.x + monitor.width, other.x + other.width) >
+                Math.max(monitor.x, other.x);
+            const joined = monitors.some((other, otherIndex) => {
+                if (otherIndex === index)
+                    return false;
+                switch (position) {
+                case St.Side.LEFT:
+                    return other.x + other.width === monitor.x && verticalOverlap(other);
+                case St.Side.RIGHT:
+                    return monitor.x + monitor.width === other.x && verticalOverlap(other);
+                case St.Side.TOP:
+                    return other.y + other.height === monitor.y && horizontalOverlap(other);
+                case St.Side.BOTTOM:
+                    return monitor.y + monitor.height === other.y && horizontalOverlap(other);
+                default:
+                    return false;
+                }
+            });
+            if (joined) {
+                switch (position) {
+                case St.Side.LEFT: return St.Side.RIGHT;
+                case St.Side.RIGHT: return St.Side.LEFT;
+                case St.Side.TOP: return St.Side.BOTTOM;
+                case St.Side.BOTTOM: return St.Side.TOP;
+                }
+            }
+        }
     }
     return position;
 }

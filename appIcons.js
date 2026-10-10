@@ -62,6 +62,7 @@ const clickAction = Object.freeze({
     FOCUS_MINIMIZE_OR_PREVIEWS: 9,
     FOCUS_MINIMIZE_OR_APP_SPREAD: 10,
     QUIT: 11,
+    FOCUS_OR_OVERVIEW: 12,
 });
 
 const scrollAction = Object.freeze({
@@ -233,7 +234,14 @@ export const DockAbstractAppIcon = GObject.registerClass({
         this._previewMenuManager = null;
         this._previewMenu = null;
 
-        // This requires GNOME 49
+        // Adaptive build: while the overview is open, a grouped application
+        // icon can preview/focus a representative window simply by hovering it.
+        // The timeout belongs to the icon so leaving/destroying the actor always
+        // cancels a pending focus transaction.
+        this._overviewHoverFocusId = 0;
+        this.connect('notify::hover', () => this._onOverviewHoverChanged());
+
+        // Upstream v109: GNOME 49+ supports this double-click gesture.
         if (Clutter.ClickGesture) {
             const doubleClickGesture = new Clutter.ClickGesture({nClicksRequired: 2});
             doubleClickGesture.connect('recognize', () => {
@@ -248,7 +256,129 @@ export const DockAbstractAppIcon = GObject.registerClass({
         }
     }
 
+    _cancelOverviewHoverFocus() {
+        if (!this._overviewHoverFocusId)
+            return;
+
+        GLib.source_remove(this._overviewHoverFocusId);
+        this._overviewHoverFocusId = 0;
+    }
+
+    _onOverviewHoverChanged() {
+        this._cancelOverviewHoverFocus();
+
+        const settings = Docking.DockManager.settings;
+        if (!this.hover || !this.running ||
+            this._isFileDragActive() ||
+            !settings.focusOverviewAppOnHover ||
+            (!Main.overview.visible && !Main.overview.visibleTarget))
+            return;
+
+        const delay = Math.max(0, Math.min(2000,
+            settings.focusOverviewAppHoverDelay));
+
+        if (delay === 0) {
+            this._focusOverviewAppOnHover();
+            return;
+        }
+
+        this._overviewHoverFocusId = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT_IDLE, delay, () => {
+                this._overviewHoverFocusId = 0;
+
+                const currentSettings = Docking.DockManager.settings;
+                if (this.hover && this.running &&
+                    !this._isFileDragActive() &&
+                    currentSettings.focusOverviewAppOnHover &&
+                    (Main.overview.visible || Main.overview.visibleTarget))
+                    this._focusOverviewAppOnHover();
+
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _isFileDragActive() {
+        const dock = Docking.DockManager.getDefault()?.getDockByMonitor(this.monitorIndex);
+        return !!dock?._fileDragFocus?.active;
+    }
+
+    _getOverviewHoverWindow() {
+        let windows = this.getInterestingWindows().filter(window =>
+            window && !window.skipTaskbar && !window.is_attached_dialog?.());
+
+        if (!windows.length)
+            return null;
+
+        // Preserve the user's current choice for multi-window applications when
+        // the focused window already belongs to this app. Otherwise choose the
+        // most-recently-used window on the active workspace, then MRU anywhere.
+        const focusedWindow = global.display.focus_window;
+        if (focusedWindow && windows.includes(focusedWindow))
+            return focusedWindow;
+
+        const activeWorkspace = global.workspace_manager.get_active_workspace();
+        const activeWindows = windows.filter(window =>
+            window.get_workspace?.() === activeWorkspace);
+
+        const rankByRecency = (a, b) => {
+            const aTime = typeof a.get_user_time === 'function' ? a.get_user_time() : 0;
+            const bTime = typeof b.get_user_time === 'function' ? b.get_user_time() : 0;
+            if (aTime !== bTime)
+                return bTime - aTime;
+
+            const aSequence = a.get_stable_sequence?.() ?? 0;
+            const bSequence = b.get_stable_sequence?.() ?? 0;
+            return bSequence - aSequence;
+        };
+
+        windows = activeWindows.length ? activeWindows : windows;
+        windows.sort(rankByRecency);
+        return windows[0] ?? null;
+    }
+
+    _focusOverviewAppOnHover() {
+        if (!Main.overview.visible && !Main.overview.visibleTarget)
+            return;
+
+        const window = this._getOverviewHoverWindow();
+        if (!window)
+            return;
+
+        const settings = Docking.DockManager.settings;
+        const timestamp = global.get_current_time();
+        const workspace = window.get_workspace?.();
+        const activeWorkspace = global.workspace_manager.get_active_workspace();
+
+        try {
+            if (workspace && workspace !== activeWorkspace) {
+                if (!settings.focusOverviewAppHoverSwitchWorkspace)
+                    return;
+
+                // Meta.Window.focus() is only reliable for a window on the active
+                // workspace. Prefer Mutter's combined workspace/focus operation.
+                // Avoid Main.activateWindow(), since that closes the overview.
+                if (typeof workspace.activate_with_focus === 'function') {
+                    workspace.activate_with_focus(window, timestamp);
+                    return;
+                }
+
+                if (typeof workspace.activate === 'function')
+                    workspace.activate(timestamp);
+            }
+
+            if (typeof window.focus === 'function')
+                window.focus(timestamp);
+            else if (typeof global.display.set_input_focus_window === 'function')
+                global.display.set_input_focus_window(window, false, timestamp);
+            else if (typeof window.activate === 'function')
+                window.activate(timestamp);
+        } catch (error) {
+            logError(error, 'Dash-to-Dock adaptive overview hover focus failed');
+        }
+    }
+
     _onDestroy() {
+        this._cancelOverviewHoverFocus();
         super._onDestroy();
 
         delete this._menu;
@@ -706,6 +836,17 @@ export const DockAbstractAppIcon = GObject.registerClass({
                     Docking.DockManager.getDefault().appSpread.toggle(this.app);
                 } else {
                     // Activate the first window
+                    Main.activateWindow(windows[0]);
+                }
+                break;
+
+            case clickAction.FOCUS_OR_OVERVIEW:
+                if (this.focused && !hasUrgentWindows && !Main.overview.visible) {
+                    shouldHideOverview = false;
+                    this._doubleClickGesture?.cancel();
+                    Main.overview.toggle();
+                } else {
+                    // Focus the application (and its workspace) before showing overview.
                     Main.activateWindow(windows[0]);
                 }
                 break;

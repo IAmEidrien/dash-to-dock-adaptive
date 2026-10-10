@@ -1,53 +1,96 @@
-# Dash to Dock
-![screenshot](https://github.com/micheleg/dash-to-dock/raw/master/media/screenshot.jpg)
+# Dash-to-Dock Adaptive
 
-## A dock for the GNOME Shell
-This extension enhances the dash moving it out of the overview and transforming it in a dock for an easier launching of applications and a faster switching between windows and desktops without having to leave the desktop view.
+An experimental, AI-assisted fork of
+[Dash to Dock](https://github.com/micheleg/dash-to-dock), maintained by Eidrien.
+It adds app-centric ordering and interaction for an adaptive GNOME desktop.
+This is a genuine GitHub fork with the complete upstream Git history. The
+current build is **v110 — Adaptive 8**, tag `extensions.gnome.org-v110`, commit
+`2dfae3474d6984b566ef0c3dab1524a675bbba48`.
 
-[<img src="https://micheleg.github.io/dash-to-dock/media/get-it-on-ego.png" height="100">](https://extensions.gnome.org/extension/307/dash-to-dock)
+## Adaptive features
 
-For additional installation instructions and more information visit [https://micheleg.github.io/dash-to-dock/](https://micheleg.github.io/dash-to-dock/).
+- Order running apps by GNOME usage ranking, aligned with Adaptive Workspace
+  Order; optionally prevent manual icon reorder drops.
+- **Focus or overview** launcher clicks: focus an unfocused app on its
+  workspace, or open Overview when the app is already focused.
+- Focus an app's window on hover in Overview, with configurable delay and
+  workspace activation that keeps Overview open.
+- Prefer app targets when crowded: hide secondary dock items before shrinking
+  app icons or resorting to scrolling.
+- Tune workspace-scroll delay instead of using upstream's fixed 250ms delay.
+- Move the dock to the symmetric opposite edge when another display joins its
+  preferred edge, then restore the saved position after disconnect.
+- Raise a running app's relevant window after a **200 ms** external-file drag
+  over its icon, in Overview or when the dock was already naturally visible.
+  Pointer-only dock peeks do not trigger this action.
 
-## Installation from source
+See [ADAPTIVE-BUILD.md](ADAPTIVE-BUILD.md) for defaults and behavior details.
+Disabled adaptive options retain upstream behavior.
 
-The extension can be installed directly from source, either for the convenience of using git or to test the latest development version. Clone the desired branch with git
+## Status and compatibility
 
-### Build Dependencies
+The primary user-tested environment is **GNOME Shell 46 on Wayland**, including
+a TV at 200% scale and occasional use of a second display. Metadata follows
+upstream's supported-version list; this is not a claim that every adaptive
+feature has been tested on every listed release. Public availability does not
+mean this experimental fork has passed GNOME Extensions review.
 
-To compile the stylesheet you'll need an implementation of SASS. Dash to Dock supports `dart-sass` (`sass`), `sassc`, and `ruby-sass`. Every distro should have at least one of these implementations, we recommend using `dart-sass` (`sass`) or `sassc` over `ruby-sass` as `ruby-sass` is deprecated.
+Keep only one Dash-to-Dock/Ubuntu Dock implementation enabled at a time.
+The Adaptive UUID is `dash-to-dock-adaptive@eidrien.local`; the original settings
+schema and gettext domain are retained for existing preferences.
 
-By default, Dash to Dock will attempt to build with `sassc`. To change this behavior set the `SASS` environment variable to either `dart` or `ruby`.
+## Install and update with Gitpulsar
 
-```bash
-export SASS=dart
-# or...
-export SASS=ruby
+The repository root is directly installable. It includes runtime stylesheet
+and translations, so a normal Gitpulsar **Pull** does not require Sass or
+gettext on the user's machine.
+
+For a new installation:
+
+```sh
+git clone https://github.com/IAmEidrien/dash-to-dock-adaptive.git \
+  "$HOME/.local/share/gnome-shell/extensions/dash-to-dock-adaptive@eidrien.local"
+cd "$HOME/.local/share/gnome-shell/extensions/dash-to-dock-adaptive@eidrien.local"
+glib-compile-schemas --strict schemas
 ```
 
-### Building
+Log out and back in on Wayland, then enable the extension. Subsequent updates:
+pull **this Adaptive repository's `master`**, recompile schemas when they change,
+and reload the GNOME session when extension code changes. Existing users of
+the old snapshot repository need the one-time branch switch in
+[GIT-WORKFLOW.md](GIT-WORKFLOW.md); ordinary Pull cannot join unrelated histories.
+The installed directory, extension UUID and saved preferences remain the same.
 
-Clone the repository or download the branch from github. A simple Makefile is included.
+See [GIT-WORKFLOW.md](GIT-WORKFLOW.md). Do not run `make install` over an
+installed Git checkout: it is a copy-based installation target.
 
-Next use `make` to install the extension into your home directory. A Shell reload is required <kbd>Alt</kbd> + <kbd>F2</kbd> <kbd>r</kbd> <kbd>Enter</kbd> under Xorg or under Wayland you may have to logout and login. The extension has to be enabled  with *gnome-extensions-app* (GNOME Extensions) or with *dconf*.
+## Development and upstream integration
 
-```bash
-git clone https://github.com/micheleg/dash-to-dock.git
-make -C dash-to-dock install
+The source build uses Make, GLib schema tools, gettext, Sass (`sassc`, or Dart
+Sass with `SASS=dart`), Node for regression tests, and ESLint 9 for the existing
+upstream lint configuration.
+
+```sh
+make refresh-runtime
+make check
+glib-compile-schemas --strict --dry-run schemas
 ```
 
-If `msgfmt` is not available on your system, you will see an error message like the following:
+Commit affected runtime assets after changing Sass or translations. Compiled
+GSettings schemas remain local. Source builds outside an installed Git checkout
+can use `make install` or `make zip-file`.
 
-```bash
-make: msgfmt: No such file or directory
-```
+[AGENTS.md](AGENTS.md) records the feature contract and contributor workflow.
+Upstream releases are integrated deliberately into this fork; users pull our
+tested Adaptive branch rather than automatically following upstream `master`.
 
-In this case install the `gettext` package from your distribution's repository.
+## Issues and attribution
 
+Report Adaptive-specific problems in
+[this repository's issue tracker](https://github.com/IAmEidrien/dash-to-dock-adaptive/issues).
+Include GNOME version, session type, relevant preferences, and reproduction
+steps. Upstream attribution and existing copyright notices are preserved.
 
-## Bug Reporting
-
-Bugs should be reported to the Github bug tracker [https://github.com/micheleg/dash-to-dock/issues](https://github.com/micheleg/dash-to-dock/issues).
-
-## License
-Dash to Dock Gnome Shell extension is distributed under the terms of the GNU General Public License,
-version 2 or later. See the COPYING file for details.
+Dash to Dock and this derivative fork are distributed under **GPL-2.0-or-later**.
+See [COPYING](COPYING). Original authorship belongs to Dash-to-Dock's contributors;
+the adaptive additions were developed by Eidrien with AI assistance.
