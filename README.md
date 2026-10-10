@@ -86,10 +86,9 @@ tested Adaptive branch rather than automatically following upstream `master`.
 
 ## Issues and attribution
 
-Report Adaptive-specific problems in
-[this repository's issue tracker](https://github.com/IAmEidrien/dash-to-dock-adaptive/issues).
-Include GNOME version, session type, relevant preferences, and reproduction
-steps. Upstream attribution and existing copyright notices are preserved.
+When reporting an Adaptive-specific problem, include GNOME version, session
+type, relevant preferences, and reproduction steps. Upstream attribution and
+existing copyright notices are preserved.
 
 Dash to Dock and this derivative fork are distributed under **GPL-2.0-or-later**.
 See [COPYING](COPYING). Original authorship belongs to Dash-to-Dock's contributors;
