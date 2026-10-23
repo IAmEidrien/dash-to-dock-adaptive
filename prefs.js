@@ -652,14 +652,6 @@ const DockSettings = GObject.registerClass({
             this._builder.get_object('adaptive_app_order_switch'),
             'active',
             Gio.SettingsBindFlags.DEFAULT);
-        this._settings.bind('adaptive-app-order-lock',
-            this._builder.get_object('adaptive_app_order_lock_check'),
-            'active',
-            Gio.SettingsBindFlags.DEFAULT);
-        this._settings.bind('adaptive-app-order',
-            this._builder.get_object('adaptive_app_order_lock_check'),
-            'sensitive',
-            Gio.SettingsBindFlags.DEFAULT);
         this._settings.bind('focus-overview-app-on-hover',
             this._builder.get_object('overview_hover_focus_switch'),
             'active',

@@ -229,13 +229,8 @@
     </key>
     <key type="b" name="adaptive-app-order">
       <default>true</default>
-      <summary>Order running applications by usage</summary>
-      <description>Orders running applications using GNOME Shell's persistent application usage ranking, with oldest relevant window creation order as a tie breaker.</description>
-    </key>
-    <key type="b" name="adaptive-app-order-lock">
-      <default>true</default>
-      <summary>Disable manual reordering in adaptive mode</summary>
-      <description>Prevents dragging existing dock icons to reorder them while adaptive application ordering is active.</description>
+      <summary>Adaptive launcher ordering</summary>
+      <description>Orders running applications by workspace, then GNOME Shell's persistent usage ranking within each workspace. Prevents manual dock icon reordering while enabled.</description>
     </key>
     <key type="b" name="focus-overview-app-on-hover">
       <default>false</default>

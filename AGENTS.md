@@ -17,13 +17,14 @@ claim runtime validation based only on JavaScript parsing.
 
 ## Behavior to preserve
 
-- Adaptive app ranking uses GNOME `AppUsage.compare()`, oldest relevant window
-  stable sequence, and deterministic app-ID/name fallback. Keep it compatible
-  with Adaptive Workspace Order's ranking policy. This dock does not own
+- Adaptive launcher ordering groups running apps by their earliest relevant
+  workspace, then uses GNOME `AppUsage.compare()`, oldest relevant window
+  stable sequence, and deterministic app-ID/name fallback within that group.
+  Sticky-only apps follow the active workspace. This dock does not own
   workspace creation, reordering, or maximize-history management; those belong
   to companion extensions.
-- Turning adaptive options off must retain upstream behavior. The manual
-  reorder lock rejects internal reorder drops without relying on private
+- Turning adaptive options off must retain upstream behavior. Adaptive mode
+  rejects internal reorder drops without relying on private
   `Draggable` internals.
 - Crowding starts from the full desired layout at the preferred icon size:
   hide Show Applications/Trash/mounts first, then shrink apps if allowed, then

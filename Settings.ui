@@ -1103,7 +1103,7 @@
                                 <property name="can_focus">0</property>
                                 <property name="hexpand">1</property>
                                 <property name="halign">start</property>
-                                <property name="label" translatable="yes">Order running applications by usage</property>
+                                <property name="label" translatable="yes">Adaptive launcher ordering</property>
                                 <layout>
                                   <property name="column">0</property>
                                   <property name="row">0</property>
@@ -1115,7 +1115,7 @@
                                 <property name="can_focus">0</property>
                                 <property name="hexpand">1</property>
                                 <property name="halign">start</property>
-                                <property name="label" translatable="yes">Use GNOME Shell's persistent usage ranking, then oldest relevant window creation order. Running pinned apps join the dynamic section.</property>
+                                <property name="label" translatable="yes">Order running apps by workspace, then by usage within each workspace. Running pinned apps join the dynamic section; inactive pinned apps stay first. Manual icon reordering is disabled.</property>
                                 <property name="wrap">1</property>
                                 <property name="xalign">0</property>
                                 <style>
@@ -1124,18 +1124,6 @@
                                 <layout>
                                   <property name="column">0</property>
                                   <property name="row">1</property>
-                                </layout>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkCheckButton" id="adaptive_app_order_lock_check">
-                                <property name="label" translatable="yes">Disable manual icon reordering in adaptive mode</property>
-                                <property name="halign">start</property>
-                                <property name="margin_top">12</property>
-                                <layout>
-                                  <property name="column">0</property>
-                                  <property name="row">2</property>
-                                  <property name="column-span">2</property>
                                 </layout>
                               </object>
                             </child>

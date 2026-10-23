@@ -41,6 +41,40 @@ function positionFixture() {
         rtl() { direction = 1; }, prefer(index) { preferred = index; }};
 }
 
+test('adaptive ordering groups by earliest relevant workspace before usage', () => {
+    let activeWorkspace = 2;
+    const settings = {isolateWorkspaces: false, isolateMonitors: false};
+    const methods = vm.runInNewContext(`({
+        ${method('dash.js', '_getAppWorkspaceIndex')},
+        ${method('dash.js', '_compareAppsByWorkspaceAndUsage')},
+    })`, {
+        AppIcons: {getInterestingWindows: windows => windows.filter(w => !w.skipTaskbar)},
+        global: {workspace_manager: {get_active_workspace_index: () => activeWorkspace}},
+        Docking: {DockManager: {settings}},
+    });
+    const makeWindow = (index, sticky = false) => ({
+        get_workspace: () => ({index: () => index}),
+        is_on_all_workspaces: () => sticky,
+    });
+    const app = (name, windows) => ({name, get_windows: () => windows});
+    const early = app('early', [makeWindow(0)]);
+    const mixed = app('mixed', [makeWindow(3), makeWindow(1)]);
+    const late = app('late', [makeWindow(2)]);
+    const sticky = app('sticky', [makeWindow(0, true)]);
+    const dash = {...methods, _monitorIndex: 0,
+        _compareAppsByUsage: (a, b) => b.name.localeCompare(a.name)};
+    assert.equal(dash._getAppWorkspaceIndex(mixed), 1);
+    assert.equal(dash._compareAppsByWorkspaceAndUsage(early, mixed) < 0, true);
+    assert.equal(dash._compareAppsByWorkspaceAndUsage(mixed, late) < 0, true);
+    assert.equal(dash._getAppWorkspaceIndex(sticky), activeWorkspace);
+    activeWorkspace = 0;
+    assert.equal(dash._getAppWorkspaceIndex(sticky), 0);
+    assert.equal(dash._getAppWorkspaceIndex(app('pending', [])), Infinity);
+    assert.equal(dash._compareAppsByWorkspaceAndUsage(early,
+        app('another', [makeWindow(0)])) < 0, true,
+    'usage remains the tie-breaker within a workspace');
+});
+
 test('monitor joins use the symmetric opposite edge and disconnects restore the saved preference', () => {
     const f = positionFixture();
     const {LEFT, RIGHT, TOP, BOTTOM} = f.Side;

@@ -37,6 +37,7 @@ const DASH_VISIBILITY_TIMEOUT = 3;
 const Labels = Object.freeze({
     SHOW_MOUNTS: Symbol('show-mounts'),
     FIRST_LAST_CHILD_WORKAROUND: Symbol('first-last-child-workaround'),
+    ADAPTIVE_WORKSPACES: Symbol('adaptive-workspaces'),
 });
 
 /**
@@ -335,6 +336,22 @@ export const DockDash = GObject.registerClass({
             this._onWindowDragEnd.bind(this),
         ]);
 
+        const workspaceManager = global.workspace_manager;
+        this._signalsHandler.add([
+            workspaceManager, 'workspace-added',
+            this._syncAdaptiveWorkspaceSignals.bind(this),
+        ], [
+            workspaceManager, 'workspace-removed',
+            this._syncAdaptiveWorkspaceSignals.bind(this),
+        ], [
+            workspaceManager, 'workspaces-reordered',
+            this._queueRedisplay.bind(this),
+        ], [
+            workspaceManager, 'workspace-switched',
+            this._queueRedisplay.bind(this),
+        ]);
+        this._syncAdaptiveWorkspaceSignals();
+
         this.connect('destroy', this._onDestroy.bind(this));
     }
 
@@ -424,7 +441,7 @@ export const DockDash = GObject.registerClass({
 
     _isAdaptiveOrderLockedDrag(source) {
         const {settings} = Docking.DockManager;
-        if (!settings.adaptiveAppOrder || !settings.adaptiveAppOrderLock)
+        if (!settings.adaptiveAppOrder)
             return false;
 
         // Keep the lock at Dash-to-Dock's drop-policy layer instead of reaching
@@ -586,6 +603,43 @@ export const DockDash = GObject.registerClass({
 
         return windows.reduce((previous, window) =>
             Math.min(previous, window.get_stable_sequence()), Infinity);
+    }
+
+    _syncAdaptiveWorkspaceSignals() {
+        this._signalsHandler.removeWithLabel(Labels.ADAPTIVE_WORKSPACES);
+        const workspaceManager = global.workspace_manager;
+        for (let i = 0; i < workspaceManager.n_workspaces; i++) {
+            const workspace = workspaceManager.get_workspace_by_index(i);
+            this._signalsHandler.addWithLabel(Labels.ADAPTIVE_WORKSPACES,
+                [workspace, 'window-added', this._queueRedisplay.bind(this)],
+                [workspace, 'window-removed', this._queueRedisplay.bind(this)]);
+        }
+        this._queueRedisplay();
+    }
+
+    _getAppWorkspaceIndex(app) {
+        if (!app)
+            return Infinity;
+
+        const windows = AppIcons.getInterestingWindows(
+            app.get_windows(), this._monitorIndex);
+        // Sticky windows belong to every workspace. A normal window gives the
+        // app a stable position; a sticky-only app follows the active workspace.
+        const positions = windows.filter(window => !window.is_on_all_workspaces())
+            .map(window => window.get_workspace()?.index() ?? Infinity);
+        if (positions.length)
+            return Math.min(...positions);
+        return windows.length
+            ? global.workspace_manager.get_active_workspace_index()
+            : Infinity;
+    }
+
+    _compareAppsByWorkspaceAndUsage(appA, appB) {
+        const workspaceOrder =
+            this._getAppWorkspaceIndex(appA) - this._getAppWorkspaceIndex(appB);
+        if (workspaceOrder)
+            return workspaceOrder;
+        return this._compareAppsByUsage(appA, appB);
     }
 
     _compareAppsByUsage(appA, appB) {
@@ -1060,9 +1114,8 @@ export const DockDash = GObject.registerClass({
         let staticFavoriteCount = 0;
 
         if (adaptiveAppOrder) {
-            // Match the Adaptive Desktop ordering policy: running applications
-            // use GNOME Shell's persistent AppUsage rank, then oldest relevant
-            // window creation order, then app ID/name as a deterministic fallback.
+            // Running applications follow workspace order first, then GNOME
+            // Shell's persistent AppUsage rank within each workspace.
             // Running favorites participate in that same dynamic section; only
             // inactive favorites remain pinned ahead of it.
             const runningSet = new Set(running);
@@ -1076,7 +1129,7 @@ export const DockDash = GObject.registerClass({
             }
 
             if (showRunning) {
-                running.sort(this._compareAppsByUsage.bind(this));
+                running.sort(this._compareAppsByWorkspaceAndUsage.bind(this));
                 for (const app of running) {
                     if (!newApps.includes(app))
                         newApps.push(app);

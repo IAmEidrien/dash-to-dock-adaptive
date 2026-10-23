@@ -21,9 +21,9 @@ checkout without deleting that history or changing personal settings.
   extension cancels pending activation. Unused launchers never launch an app.
 
 - Adds **Focus or overview** to launcher click actions: selecting an unfocused application raises a window on its workspace; selecting the focused application opens GNOME Overview. Clicking an icon while the overview is already open activates its window. A single-window application can also open the overview.
-- Adds **Order running applications by usage** (enabled by default). Running applications use the same ordering policy as the existing adaptive desktop stack: GNOME Shell `AppUsage.compare()`, then the oldest relevant window's stable sequence, then application ID/name as a deterministic fallback.
+- Adds **Adaptive launcher ordering** (enabled by default). Running applications follow their earliest relevant workspace, then GNOME Shell `AppUsage.compare()` within each workspace, followed by the oldest relevant window's stable sequence and app ID/name. Sticky-only apps follow the active workspace.
 - Running favorites participate in the dynamic running section; favorites that are not currently relevant/running remain pinned before it. The favorite separator follows the actual static-favorite count.
-- Adds **Disable manual icon reordering in adaptive mode** (enabled by default). Existing dock icons may still enter GNOME's drag state, but Dash-to-Dock rejects internal reorder drops while the lock is active; this avoids depending on version-specific private `Draggable` internals.
+- Adaptive ordering rejects internal dock icon reorder drops. Existing dock icons may still enter GNOME's drag state; the drop policy avoids version-specific private `Draggable` internals.
 - Replaces Dash to Dock's fixed 250 ms workspace-scroll dead time with **Workspace switch delay (ms)**. Default: **10 ms**. `0` disables throttling.
 - Preserves upstream behavior when adaptive ordering is disabled.
 - Adds **Focus application in overview on hover**. This is app-centric and therefore works naturally with Dash-to-Dock's grouped icons. A configurable 0–2000 ms delay controls dwell time; `0` focuses immediately.
@@ -44,7 +44,7 @@ checkout without deleting that history or changing personal settings.
 
 The fork retains the UUID `dash-to-dock-adaptive@eidrien.local` while retaining the upstream Dash-to-Dock settings schema so the user's tuned dock preferences remain compatible. Do not enable another Dash-to-Dock/Ubuntu Dock copy at the same time.
 
-The app-order comparator intentionally matches the supplied adaptive Dash-to-Panel implementation and the existing Adaptive Workspace Order extension, so task order and workspace order share the same ranking language.
+The within-workspace app comparator matches the supplied adaptive Dash-to-Panel implementation. Workspace index is the primary key, so dock traversal follows Adaptive Workspace Order even on mixed-app workspaces.
 
 The primarily user-tested setup is GNOME 46 on Wayland. Broader version support
 in metadata follows upstream and does not imply that all adaptive behavior has
