@@ -6,6 +6,8 @@ name: Make
     branches:
       - main
       - master
+      - testing
+      - testing
       - ubuntu-dock
       - make_ci
     tags:
