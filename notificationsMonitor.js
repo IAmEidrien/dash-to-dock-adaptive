@@ -26,24 +26,31 @@ export class NotificationsMonitor {
         const getIsEnabled = () => !this.dndMode &&
             Docking.DockManager.settings.showIconsNotificationsCounter;
 
+        this._dndMode = !this._settings.get_boolean('show-banners');
         this._isEnabled = getIsEnabled();
-        const checkIsEnabled = () => {
+        const syncState = () => {
+            const dndMode = !this._settings.get_boolean('show-banners');
+            const dndChanged = dndMode !== this._dndMode;
+            this._dndMode = dndMode;
             const isEnabled = getIsEnabled();
-            if (isEnabled !== this._isEnabled) {
-                this._isEnabled = isEnabled;
+            const enabledChanged = isEnabled !== this._isEnabled;
+            this._isEnabled = isEnabled;
+
+            // The launcher model follows DND independently of notification
+            // counting. Synchronize it before icons rebuild their indicators.
+            if (dndChanged)
+                this.emit('dnd-changed');
+
+            if (dndChanged || enabledChanged) {
                 this.emit('state-changed');
 
                 this._updateState();
             }
         };
 
-        this._dndMode = !this._settings.get_boolean('show-banners');
-        this._signalsHandler.add(this._settings, 'changed::show-banners', () => {
-            this._dndMode = !this._settings.get_boolean('show-banners');
-            checkIsEnabled();
-        });
+        this._signalsHandler.add(this._settings, 'changed::show-banners', syncState);
         this._signalsHandler.add(Docking.DockManager.settings,
-            'changed::show-icons-notifications-counter', checkIsEnabled);
+            'changed::show-icons-notifications-counter', syncState);
 
         this._updateState();
     }
