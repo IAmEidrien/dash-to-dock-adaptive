@@ -1,4 +1,5 @@
 // -*- mode: js; js-indent-level: 4; indent-tabs-mode: nil -*-
+import {visibleWindow} from './launcherVisibility.js';
 
 import {
     Clutter,
@@ -268,7 +269,7 @@ export const DockAbstractAppIcon = GObject.registerClass({
         this._cancelOverviewHoverFocus();
 
         const settings = Docking.DockManager.settings;
-        if (!this.hover || !this.running ||
+        if (!(this.hover || this._paddingHover) || !this.running ||
             this._isFileDragActive() ||
             !settings.focusOverviewAppOnHover ||
             (!Main.overview.visible && !Main.overview.visibleTarget))
@@ -287,7 +288,7 @@ export const DockAbstractAppIcon = GObject.registerClass({
                 this._overviewHoverFocusId = 0;
 
                 const currentSettings = Docking.DockManager.settings;
-                if (this.hover && this.running &&
+                if ((this.hover || this._paddingHover) && this.running &&
                     !this._isFileDragActive() &&
                     currentSettings.focusOverviewAppOnHover &&
                     (Main.overview.visible || Main.overview.visibleTarget))
@@ -350,10 +351,12 @@ export const DockAbstractAppIcon = GObject.registerClass({
         const activeWorkspace = global.workspace_manager.get_active_workspace();
 
         try {
+            if (!settings.overviewHoverFocusWindow) {
+                if (workspace && workspace !== activeWorkspace)
+                    workspace.activate(timestamp);
+                return;
+            }
             if (workspace && workspace !== activeWorkspace) {
-                if (!settings.focusOverviewAppHoverSwitchWorkspace)
-                    return;
-
                 // Meta.Window.focus() is only reliable for a window on the active
                 // workspace. Prefer Mutter's combined workspace/focus operation.
                 // Avoid Main.activateWindow(), since that closes the overview.
@@ -1104,7 +1107,9 @@ export const DockAbstractAppIcon = GObject.registerClass({
         if (!this._urgentWindows.size)
             return interestingWindows;
 
-        return [...new Set([...this._urgentWindows, ...interestingWindows])];
+        const {settings} = Docking.DockManager;
+        return [...new Set([...this._urgentWindows, ...interestingWindows])]
+            .filter(window => visibleWindow(window, settings));
     }
 
     getSnapName() {
@@ -1553,7 +1558,7 @@ export function getInterestingWindows(windows, monitorIndex) {
         });
     }
 
-    return windows.filter(w => !w.skipTaskbar);
+    return windows.filter(w => !w.skipTaskbar && visibleWindow(w, settings));
 }
 
 /**
