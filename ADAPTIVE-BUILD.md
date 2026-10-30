@@ -1,4 +1,4 @@
-# Dash to Dock 110 — Adaptive 8
+# Dash to Dock 110 — Adaptive 9
 
 Experimental GNOME Shell fork based on the official Dash to Dock 110 extension
 release (`extensions.gnome.org-v110`, upstream commit `2dfae34`). All changes
@@ -8,6 +8,22 @@ its separate snapshot history. See GIT-WORKFLOW.md for migrating an installed
 checkout without deleting that history or changing personal settings.
 
 ## Changes
+
+- **Launchers → Launcher visibility…** provides independent floating-window and
+  transient/dialog filters, plus an installed-application blacklist in compact
+  icon/name rows. Floating means unmaximized, unfullscreened and untiled;
+  partial maximization and Mutter's tiled window state remain eligible.
+  Window filters remove a running launcher only when no eligible window remains.
+  Explicit application entries also hide pinned launchers without changing
+  GNOME favorites. All filters default off.
+- Unavailable desktop IDs are removed at extension startup by default, using
+  desktop-file resolution rather than Shell's running-app cache. Enable
+  **Retain unavailable application entries** to preserve them, displayed by ID.
+- Adaptive 9 visibility behavior was tested in isolated GNOME 46 Wayland with
+  real windows, live maximize/unmaximize and fullscreen changes, application
+  blacklist updates, startup retention/pruning and the native GTK app chooser.
+  Other declared Shell versions inherit the prior compatibility range and were
+  not retested for this update.
 
 - Integrates upstream v110 fixes for dock visibility, shortcut overlays,
   fullscreen unredirection, Overview workspace sizing, effective workspace

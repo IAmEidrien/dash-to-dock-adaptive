@@ -6,6 +6,7 @@ import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
+import {showVisibilityPreferences} from './visibilityPrefs.js';
 
 import {
     ExtensionPreferences,
@@ -643,6 +644,8 @@ const DockSettings = GObject.registerClass({
 
 
         // Apps panel
+        const visibility = this._builder.get_object('launcher_visibility_button');
+        visibility.connect('clicked', () => showVisibilityPreferences(visibility.get_root(), this._settings));
 
         this._settings.bind('show-running',
             this._builder.get_object('show_running_switch'),

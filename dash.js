@@ -1,4 +1,5 @@
 // -*- mode: js; js-indent-level: 4; indent-tabs-mode: nil -*-
+import {visibleApp} from './launcherVisibility.js';
 
 import {
     Clutter,
@@ -1090,7 +1091,9 @@ export const DockDash = GObject.registerClass({
             }
         }
 
-        if (settings.isolateWorkspaces ||
+        running = running.filter(app => visibleApp(app, settings));
+        if (settings.hideFloatingWindows || settings.hideTransientWindows ||
+            settings.isolateWorkspaces ||
             settings.isolateMonitors) {
             // When using isolation, we filter out apps that have no windows in
             // the current workspace
@@ -1110,7 +1113,10 @@ export const DockDash = GObject.registerClass({
         const newApps = [];
 
         const {showFavorites, showRunning, adaptiveAppOrder} = settings;
-        const favoriteApps = Object.values(favorites);
+        const favoriteApps = Object.values(favorites).filter(app => visibleApp(app, settings) &&
+            (!(settings.hideFloatingWindows || settings.hideTransientWindows) ||
+                !app.get_windows().length ||
+                AppIcons.getInterestingWindows(app.get_windows(), this._monitorIndex).length));
         let staticFavoriteCount = 0;
 
         if (adaptiveAppOrder) {

@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const root = new URL('../', import.meta.url);
+const {visibleWindow} = await import(`data:text/javascript,${encodeURIComponent(readFileSync(new URL('launcherVisibility.js', root), 'utf8'))}`);
 const controllerSource = readFileSync(new URL('fileDragFocus.js', root), 'utf8')
     .replace(/^import .*;\n/gm, '').replace('export class', 'class');
 
@@ -101,6 +102,7 @@ function setup(t) {
         AppIcons: {DockAbstractAppIcon: Icon},
         DockManager: {settings},
         Docking: {DockManager: {settings}},
+        visibleWindow,
         State: {SHOWN: 2},
         GLib: {
             PRIORITY_DEFAULT: 0,

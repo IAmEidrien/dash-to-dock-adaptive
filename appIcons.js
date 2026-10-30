@@ -1,4 +1,5 @@
 // -*- mode: js; js-indent-level: 4; indent-tabs-mode: nil -*-
+import {visibleWindow} from './launcherVisibility.js';
 
 import {
     Clutter,
@@ -1104,7 +1105,9 @@ export const DockAbstractAppIcon = GObject.registerClass({
         if (!this._urgentWindows.size)
             return interestingWindows;
 
-        return [...new Set([...this._urgentWindows, ...interestingWindows])];
+        const {settings} = Docking.DockManager;
+        return [...new Set([...this._urgentWindows, ...interestingWindows])]
+            .filter(window => visibleWindow(window, settings));
     }
 
     getSnapName() {
@@ -1553,7 +1556,7 @@ export function getInterestingWindows(windows, monitorIndex) {
         });
     }
 
-    return windows.filter(w => !w.skipTaskbar);
+    return windows.filter(w => !w.skipTaskbar && visibleWindow(w, settings));
 }
 
 /**

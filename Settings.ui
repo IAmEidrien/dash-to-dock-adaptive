@@ -1001,6 +1001,17 @@
                             <property name="margin_bottom">12</property>
                             <property name="column_spacing">32</property>
                             <child>
+                              <object class="GtkButton" id="launcher_visibility_button">
+                                <property name="label" translatable="yes">Launcher visibility…</property>
+                                <property name="halign">start</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">20</property>
+                                  <property name="column-span">2</property>
+                                </layout>
+                              </object>
+                            </child>
+                            <child>
                               <object class="GtkSwitch" id="show_running_switch">
                                 <property name="halign">end</property>
                                 <property name="valign">center</property>
