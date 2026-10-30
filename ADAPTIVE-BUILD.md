@@ -1,4 +1,4 @@
-# Dash to Dock 110 — Adaptive 9
+# Dash to Dock 110 — Adaptive 10
 
 Experimental GNOME Shell fork based on the official Dash to Dock 110 extension
 release (`extensions.gnome.org-v110`, upstream commit `2dfae34`). All changes
@@ -8,6 +8,23 @@ its separate snapshot history. See GIT-WORKFLOW.md for migrating an installed
 checkout without deleting that history or changing personal settings.
 
 ## Changes
+
+- Overview hover navigation now switches workspace by default, with **Also focus
+  the application's window** as a separate, default-off option. Existing hover
+  enablement and delay values are retained. Mutter may naturally change focus
+  while switching workspace; workspace-only mode makes no explicit focus request.
+  The old switch-before-focus preference is retained as an unused legacy key.
+- **Extend hover targets into dock padding**, off by default, sends empty internal
+  padding before/after the application row to its first/last visual launcher.
+  It follows either dock axis, retains the hover dwell, and excludes controls,
+  screen space outside the dock and window/file dragging. It changes no click
+  targets. Leaving the region or Overview, disabling the option or destroying the
+  dock cancels its pending hover action.
+  Adaptive 10 was tested in isolated GNOME 46 Wayland with real windows and
+  virtual pointer input on horizontal and vertical docks. Workspace-only dwell,
+  optional focus, padding picking, disabling the option and leaving the dock
+  passed. Regression tests additionally cover visual endpoint order and control
+  exclusion; the actual preferences UI and ZIP packaging were checked too.
 
 - **Launchers → Launcher visibility…** provides independent floating-window and
   transient/dialog filters, plus an installed-application blacklist in compact
@@ -42,9 +59,9 @@ checkout without deleting that history or changing personal settings.
 - Adaptive ordering rejects internal dock icon reorder drops. Existing dock icons may still enter GNOME's drag state; the drop policy avoids version-specific private `Draggable` internals.
 - Replaces Dash to Dock's fixed 250 ms workspace-scroll dead time with **Workspace switch delay (ms)**. Default: **10 ms**. `0` disables throttling.
 - Preserves upstream behavior when adaptive ordering is disabled.
-- Adds **Focus application in overview on hover**. This is app-centric and therefore works naturally with Dash-to-Dock's grouped icons. A configurable 0–2000 ms delay controls dwell time; `0` focuses immediately.
+- Adds **Switch workspace on hover in Overview**. This is app-centric and works with grouped icons. A configurable 0–2000 ms delay controls dwell time; `0` navigates immediately. Explicit window focus is optional and defaults off.
 - For multi-window applications, hover focus preserves the already-focused window when applicable, otherwise chooses the most-recently-used window on the active workspace, then the most-recently-used window anywhere.
-- **Switch to the application's workspace before focusing** is enabled by default. Cross-workspace focus uses Mutter workspace activation rather than `Main.activateWindow()`, so the overview stays open. Leaving an icon cancels its pending hover timer.
+- Workspace navigation uses Mutter workspace activation rather than `Main.activateWindow()`, so Overview stays open. Leaving an icon cancels its pending hover timer. Enabling optional focus adds a focus request after navigation.
 - Adds **Prioritize applications when dock is crowded** (disabled by default). The adaptive dock now uses a staged degradation policy: first try the complete requested dock at the user's preferred icon size; if that does not fit, temporarily hide Show Applications, Trash, and mounted volumes/devices; only if the primary application icons still do not fit are they allowed to shrink; scrolling remains the final fallback once even the minimum icon size is insufficient. User preferences and location monitors stay intact, so secondary items return automatically when space is available again.
 - Crowding is decided from the full desired layout at the preferred/max icon size even while secondary items are hidden, preventing hide/show oscillation and preventing a previously-shrunk dock from convincing itself that secondary items still fit. A small hysteresis margin avoids one-pixel allocation jitter near the threshold.
 - The crowding estimate now measures the complete icon tile, including its theme margins, instead of measuring only its inner button. It also allows for Show Applications' separate tile size, the icon row's spacing, and the separator at the preferred icon size. These gaps previously accumulated until the dock looked crowded while the button remained visible.

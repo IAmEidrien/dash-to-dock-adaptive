@@ -1169,7 +1169,7 @@
                                 <property name="can_focus">0</property>
                                 <property name="hexpand">1</property>
                                 <property name="halign">start</property>
-                                <property name="label" translatable="yes">Focus application in overview on hover</property>
+                                <property name="label" translatable="yes">Switch workspace on hover in Overview</property>
                                 <layout>
                                   <property name="column">0</property>
                                   <property name="row">0</property>
@@ -1181,7 +1181,7 @@
                                 <property name="can_focus">0</property>
                                 <property name="hexpand">1</property>
                                 <property name="halign">start</property>
-                                <property name="label" translatable="yes">Hover a grouped running-app icon to preview its representative window and workspace without closing the overview.</property>
+                                <property name="label" translatable="yes">Hover a running application to switch to its workspace without closing Overview. Window focus is optional.</property>
                                 <property name="wrap">1</property>
                                 <property name="xalign">0</property>
                                 <style>
@@ -1217,8 +1217,14 @@
                               </object>
                             </child>
                             <child>
+                              <object class="GtkCheckButton" id="overview_hover_padding_check">
+                                <property name="label" translatable="yes">Extend hover targets into dock padding</property>
+                                <layout><property name="column">0</property><property name="row">4</property><property name="column-span">2</property></layout>
+                              </object>
+                            </child>
+                            <child>
                               <object class="GtkCheckButton" id="overview_hover_focus_switch_workspace_check">
-                                <property name="label" translatable="yes">Switch to the application's workspace before focusing</property>
+                                <property name="label" translatable="yes">Also focus the application's window</property>
                                 <property name="halign">start</property>
                                 <property name="margin_top">6</property>
                                 <layout>

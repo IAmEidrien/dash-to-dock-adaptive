@@ -644,6 +644,9 @@ const DockSettings = GObject.registerClass({
 
 
         // Apps panel
+        this._settings.bind('overview-hover-extend-padding',
+            this._builder.get_object('overview_hover_padding_check'),
+            'active', Gio.SettingsBindFlags.DEFAULT);
         const visibility = this._builder.get_object('launcher_visibility_button');
         visibility.connect('clicked', () => showVisibilityPreferences(visibility.get_root(), this._settings));
 
@@ -663,12 +666,13 @@ const DockSettings = GObject.registerClass({
             this._builder.get_object('overview_hover_focus_delay_spinbutton'),
             'value',
             Gio.SettingsBindFlags.DEFAULT);
-        this._settings.bind('focus-overview-app-hover-switch-workspace',
+        this._settings.bind('overview-hover-focus-window',
             this._builder.get_object('overview_hover_focus_switch_workspace_check'),
             'active',
             Gio.SettingsBindFlags.DEFAULT);
         for (const id of [
             'overview_hover_focus_delay_label',
+            'overview_hover_padding_check',
             'overview_hover_focus_delay_spinbutton',
             'overview_hover_focus_switch_workspace_check',
         ]) {

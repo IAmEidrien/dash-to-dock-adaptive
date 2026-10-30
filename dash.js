@@ -353,7 +353,88 @@ export const DockDash = GObject.registerClass({
         ]);
         this._syncAdaptiveWorkspaceSignals();
 
+        this._signalsHandler.add([
+            global.stage, 'captured-event', (_stage, event) => {
+                if (event.type() === Clutter.EventType.MOTION)
+                    this._updatePaddingHover(event);
+                else if (event.type() === Clutter.EventType.LEAVE)
+                    this._clearPaddingHover();
+                return Clutter.EVENT_PROPAGATE;
+            },
+        ], [Main.overview, 'hiding', () => this._clearPaddingHover()],
+        [Main.overview, 'window-drag-begin', () => this._clearPaddingHover()],
+        [Docking.DockManager.settings, 'changed::overview-hover-extend-padding',
+            () => this._clearPaddingHover()],
+        [Docking.DockManager.settings, 'changed::focus-overview-app-on-hover',
+            () => this._clearPaddingHover()]);
+
         this.connect('destroy', this._onDestroy.bind(this));
+    }
+
+    _clearPaddingHover() {
+        if (!this._paddingHoverIcon)
+            return;
+        this._paddingHoverIcon._paddingHover = false;
+        this._paddingHoverIcon._cancelOverviewHoverFocus();
+        this._paddingHoverIcon = null;
+    }
+
+    _updatePaddingHover(event) {
+        const {settings} = Docking.DockManager;
+        if (!settings.overviewHoverExtendPadding || !settings.focusOverviewAppOnHover ||
+            !Main.overview.visible || Main.overview._inWindowDrag || !this._dashContainer.mapped) {
+            this._clearPaddingHover();
+            return;
+        }
+        let target = null;
+        const source = global.stage.get_event_actor(event);
+        const dock = Docking.DockManager.getDefault?.()?.getDockByMonitor(this._monitorIndex);
+        const paddingActors = [this, dock, dock?._box, this._dashContainer,
+            this._scrollView, this._boxContainer, this._box];
+        if (paddingActors.includes(source)) {
+            const [x, y] = event.get_coords();
+            const [dx, dy] = this._dashContainer.get_transformed_position();
+            const [dw, dh] = this._dashContainer.get_transformed_size();
+            if (x >= dx && x < dx + dw && y >= dy && y < dy + dh) {
+                const icons = this.getAppIcons().filter(icon =>
+                    icon.mapped && !icon.app.location && !icon.app.isTrash);
+                const bounds = icons.map(icon => {
+                    const [ix, iy] = icon.get_transformed_position();
+                    const [iw, ih] = icon.get_transformed_size();
+                    return {
+                        icon, start: this._isHorizontal ? ix : iy,
+                        end: this._isHorizontal ? ix + iw : iy + ih,
+                    };
+                }).sort((a, b) => a.start - b.start);
+                const position = this._isHorizontal ? x : y;
+                if (bounds.length && position < bounds[0].start)
+                    target = bounds[0].icon;
+                else if (bounds.length && position >= bounds.at(-1).end)
+                    target = bounds.at(-1).icon;
+                if (target) {
+                    const controls = [this._showAppsIcon, ...this.getAppIcons().filter(icon =>
+                        icon.app.location || icon.app.isTrash)].filter(actor => actor?.mapped);
+                    const edge = target === bounds[0].icon ? bounds[0].start : bounds.at(-1).end;
+                    if (controls.some(actor => {
+                        const [cx, cy] = actor.get_transformed_position();
+                        const [cw, ch] = actor.get_transformed_size();
+                        const start = this._isHorizontal ? cx : cy;
+                        const end = start + (this._isHorizontal ? cw : ch);
+                        return position < edge ? end > position && start < edge
+                            : start < position && end > edge;
+                    }))
+                        target = null;
+                }
+            }
+        }
+        if (target === this._paddingHoverIcon)
+            return;
+        this._clearPaddingHover();
+        if (target) {
+            this._paddingHoverIcon = target;
+            target._paddingHover = true;
+            target._onOverviewHoverChanged();
+        }
     }
 
     vfunc_get_preferred_height(forWidth) {
@@ -377,6 +458,7 @@ export const DockDash = GObject.registerClass({
     }
 
     _onDestroy() {
+        this._clearPaddingHover();
         this.iconAnimator.destroy();
 
         if (this._requiresVisibilityTimeout) {

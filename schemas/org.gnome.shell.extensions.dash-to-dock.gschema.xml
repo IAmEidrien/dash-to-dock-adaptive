@@ -236,21 +236,29 @@
       <summary>Adaptive launcher ordering</summary>
       <description>Orders running applications by workspace, then GNOME Shell's persistent usage ranking within each workspace. Prevents manual dock icon reordering while enabled.</description>
     </key>
+    <key type="b" name="overview-hover-focus-window">
+      <default>false</default>
+      <summary>Also focus the window during Overview hover navigation</summary>
+    </key>
+    <key type="b" name="overview-hover-extend-padding">
+      <default>false</default>
+      <summary>Extend Overview hover targets into empty dock padding</summary>
+    </key>
     <key type="b" name="focus-overview-app-on-hover">
       <default>false</default>
-      <summary>Focus application in overview on hover</summary>
-      <description>When the overview is open, hovering a running application icon focuses a representative window for that application.</description>
+      <summary>Switch workspace on hover in Overview</summary>
+      <description>Hovering a running application switches to its representative window's workspace. Window focus is optional.</description>
     </key>
     <key type="i" name="focus-overview-app-hover-delay">
       <range min="0" max="2000"/>
       <default>150</default>
-      <summary>Overview application hover focus delay</summary>
-      <description>Delay in milliseconds before focusing the hovered application while the overview is open. Set to 0 for immediate focus.</description>
+      <summary>Overview application hover navigation delay</summary>
+      <description>Delay in milliseconds before navigating to the hovered application while Overview is open. Set to 0 for immediate navigation.</description>
     </key>
     <key type="b" name="focus-overview-app-hover-switch-workspace">
       <default>true</default>
-      <summary>Switch workspace for overview application hover focus</summary>
-      <description>Switch to the representative window's workspace before focusing it while hovering an application in the overview.</description>
+      <summary>Legacy hover workspace option</summary>
+      <description>Retained for settings compatibility. Hover navigation now always switches workspace; overview-hover-focus-window controls optional window focus.</description>
     </key>
     <key type="b" name="isolate-workspaces">
       <default>false</default>

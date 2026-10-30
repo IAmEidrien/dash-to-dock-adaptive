@@ -269,7 +269,7 @@ export const DockAbstractAppIcon = GObject.registerClass({
         this._cancelOverviewHoverFocus();
 
         const settings = Docking.DockManager.settings;
-        if (!this.hover || !this.running ||
+        if (!(this.hover || this._paddingHover) || !this.running ||
             this._isFileDragActive() ||
             !settings.focusOverviewAppOnHover ||
             (!Main.overview.visible && !Main.overview.visibleTarget))
@@ -288,7 +288,7 @@ export const DockAbstractAppIcon = GObject.registerClass({
                 this._overviewHoverFocusId = 0;
 
                 const currentSettings = Docking.DockManager.settings;
-                if (this.hover && this.running &&
+                if ((this.hover || this._paddingHover) && this.running &&
                     !this._isFileDragActive() &&
                     currentSettings.focusOverviewAppOnHover &&
                     (Main.overview.visible || Main.overview.visibleTarget))
@@ -351,10 +351,12 @@ export const DockAbstractAppIcon = GObject.registerClass({
         const activeWorkspace = global.workspace_manager.get_active_workspace();
 
         try {
+            if (!settings.overviewHoverFocusWindow) {
+                if (workspace && workspace !== activeWorkspace)
+                    workspace.activate(timestamp);
+                return;
+            }
             if (workspace && workspace !== activeWorkspace) {
-                if (!settings.focusOverviewAppHoverSwitchWorkspace)
-                    return;
-
                 // Meta.Window.focus() is only reliable for a window on the active
                 // workspace. Prefer Mutter's combined workspace/focus operation.
                 // Avoid Main.activateWindow(), since that closes the overview.
