@@ -4,7 +4,8 @@ GPL-2.0-or-later retained: upstream-derived runtime code cannot be relicensed MI
 COPYING and upstream copyright notices remain unchanged.
 desktopIconsIntegration.js retains its separate one-clause BSD notice.
 update_baseline.sh is a separate GPL-3.0-or-later maintenance script;
-its GPLv3 grant is not downgraded to GPLv2. Other per-file grants
+its GPLv3 grant is not downgraded to GPLv2. The full text is included in
+LICENSES/GPL-3.0-or-later.txt. Other per-file grants
 remain in force; this is not a claim that every repository file is GPLv2.
 Source: https://github.com/micheleg/dash-to-dock
 
