@@ -94,3 +94,7 @@ unrelated source snapshot. Shared `master` must remain compatible with ordinary
 fast-forward Gitpulsar pulls; do not force-push or routinely rebase published
 commits. Keep changes scoped and document new upstream baselines.
 Follow the user's current instructions for committing and publishing work.
+
+License policy: follow LICENSING.md. Prefer MIT for independent original work,
+then GPL-2.0-or-later where compatible; preserve stricter upstream grants,
+attribution and asset licenses. Never infer permission for unlicensed code.
