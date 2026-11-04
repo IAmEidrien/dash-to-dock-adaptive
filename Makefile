@@ -13,6 +13,8 @@ EXTRA_MODULES = \
                 dash.js \
                 docking.js \
                 fileDragFocus.js \
+                launcherVisibility.js \
+                visibilityPrefs.js \
                 appIcons.js \
                 appIconsDecorator.js \
                 appIconIndicators.js \
