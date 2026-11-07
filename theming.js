@@ -99,13 +99,17 @@ export class ThemeManager {
     }
 
     destroy() {
-        this.emit('destroy');
-        this._transparency.destroy();
+        if (this._destroyed)
+            return;
+        this._destroyed = true;
         this._dequeueUpdateCustomTheme();
+        this._transparency.destroy();
+        this.emit('destroy');
+        this._signalsHandler.destroy();
     }
 
     _queueUpdateCustomTheme() {
-        if (this._updateLater)
+        if (this._destroyed || this._updateLater)
             return;
 
         this._updateLater = Utils.laterAdd(Meta.LaterType.BEFORE_REDRAW, () => {
@@ -374,12 +378,16 @@ class Transparency {
 
         this._signalsHandler = new Utils.GlobalSignalsHandler();
         this._trackedWindows = new Map();
+        this._enabled = false;
     }
 
     enable() {
         // ensure I never double-register/inject
         // although it should never happen
         this.disable();
+        if (this._destroyed)
+            return;
+        this._enabled = true;
 
         this._base_actor_style = this._actor.get_style();
         if (!this._base_actor_style)
@@ -437,6 +445,7 @@ class Transparency {
     }
 
     disable() {
+        this._enabled = false;
         // ensure I never double-register/inject
         // although it should never happen
         this._signalsHandler.removeWithLabel(Labels.TRANSPARENCY);
@@ -452,15 +461,22 @@ class Transparency {
     }
 
     destroy() {
+        if (this._destroyed)
+            return;
+        this._destroyed = true;
         this.disable();
         this._signalsHandler.destroy();
     }
 
     _onWindowActorAdded(container, metaWindowActor) {
+        if (!this._enabled || this._trackedWindows.has(metaWindowActor))
+            return;
         const signalIds = [];
         ['notify::allocation', 'notify::visible'].forEach(s => {
             signalIds.push(metaWindowActor.connect(s, this._updateSolidStyle.bind(this)));
         });
+        signalIds.push(metaWindowActor.connect('destroy', () =>
+            this._onWindowActorRemoved(null, metaWindowActor)));
         this._trackedWindows.set(metaWindowActor, signalIds);
     }
 
@@ -476,6 +492,8 @@ class Transparency {
     }
 
     _updateSolidStyle() {
+        if (!this._enabled)
+            return;
         const isNear = this._dockIsNear();
         if (isNear) {
             this._backgroundActor.set_style(this._opaque_style);
