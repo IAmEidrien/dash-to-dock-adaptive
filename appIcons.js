@@ -218,15 +218,13 @@ export const DockAbstractAppIcon = GObject.registerClass({
             this._signalsHandler.add(
                 Docking.DockManager.settings,
                 `changed::${key}`, () => {
-                    this._indicator.destroy();
-                    this._indicator = new AppIconIndicators.AppIconIndicator(this);
+                    this._indicator.reconfigure();
                 }
             );
         });
 
         this._signalsHandler.add(notificationsMonitor, 'state-changed', () => {
-            this._indicator.destroy();
-            this._indicator = new AppIconIndicators.AppIconIndicator(this);
+            this._indicator.reconfigure();
         });
 
         this._updateState();
@@ -381,6 +379,13 @@ export const DockAbstractAppIcon = GObject.registerClass({
     }
 
     _onDestroy() {
+        if (this._optionalScrollCycleWindowsDeadTimeId) {
+            GLib.source_remove(this._optionalScrollCycleWindowsDeadTimeId);
+            this._optionalScrollCycleWindowsDeadTimeId = 0;
+        }
+        this._signalsHandler?.destroy();
+        this._indicator?.destroy();
+        this._indicator = null;
         this._cancelOverviewHoverFocus();
         super._onDestroy();
 
@@ -411,12 +416,18 @@ export const DockAbstractAppIcon = GObject.registerClass({
         if (!this.running)
             return Clutter.EVENT_PROPAGATE;
 
+        const scrollDelay = Math.max(0, settings.workspaceScrollDelay);
         if (this._optionalScrollCycleWindowsDeadTimeId) {
-            return Clutter.EVENT_PROPAGATE;
-        } else {
+            if (scrollDelay > 0)
+                return Clutter.EVENT_PROPAGATE;
+            GLib.source_remove(this._optionalScrollCycleWindowsDeadTimeId);
+            this._optionalScrollCycleWindowsDeadTimeId = 0;
+        }
+        if (scrollDelay > 0) {
             this._optionalScrollCycleWindowsDeadTimeId = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT, 250, () => {
+                GLib.PRIORITY_DEFAULT, scrollDelay, () => {
                     this._optionalScrollCycleWindowsDeadTimeId = 0;
+                    return GLib.SOURCE_REMOVE;
                 });
         }
 

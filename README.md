@@ -4,10 +4,18 @@ An experimental, AI-assisted fork of
 [Dash to Dock](https://github.com/micheleg/dash-to-dock), maintained by Eidrien.
 It adds app-centric ordering and interaction for an adaptive GNOME desktop.
 This is a genuine GitHub fork with the complete upstream Git history. The
-current build is **v110 — Adaptive 8**, tag `extensions.gnome.org-v110`, commit
+current build is **v110 — Adaptive 11**, based on tag `extensions.gnome.org-v110`, commit
 `2dfae3474d6984b566ef0c3dab1524a675bbba48`.
 
 ## Adaptive features
+
+- **Adaptive CPU indicators (Experimental)** morph a running app's indicator
+  from a dot to a line as its estimated CPU use increases. Hover activates
+  monitoring by default; an always-active option is available.
+  See [ADAPTIVE-CPU.md](ADAPTIVE-CPU.md) for scales, dependencies, limitations
+  and validation.
+- Preferences hide dependent controls when they are irrelevant, retaining their
+  values. Monitor selection appears only when “Show on all monitors” is off.
 
 - Order running apps by GNOME usage ranking, aligned with Adaptive Workspace
   Order; optionally prevent manual icon reorder drops.
@@ -17,7 +25,8 @@ current build is **v110 — Adaptive 8**, tag `extensions.gnome.org-v110`, commi
   workspace activation that keeps Overview open.
 - Prefer app targets when crowded: hide secondary dock items before shrinking
   app icons or resorting to scrolling.
-- Tune workspace-scroll delay instead of using upstream's fixed 250ms delay.
+- Tune the shared window/workspace scroll-switch delay instead of using
+  upstream's fixed 250ms window-switch delay.
 - Move the dock to the symmetric opposite edge when another display joins its
   preferred edge, then restore the saved position after disconnect.
 - Raise a running app's relevant window after a **200 ms** external-file drag
@@ -41,7 +50,8 @@ schema and gettext domain are retained for existing preferences.
 
 ## Install and update with Gitpulsar
 
-The repository root is directly installable. It includes runtime stylesheet
+CPU activity monitoring requires **Python 3**; if it is unavailable, ordinary
+running indicators remain usable. The repository root is directly installable. It includes runtime stylesheet
 and translations, so a normal Gitpulsar **Pull** does not require Sass or
 gettext on the user's machine.
 

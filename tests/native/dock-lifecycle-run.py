@@ -10,6 +10,7 @@ import subprocess
 import time
 
 p = argparse.ArgumentParser()
+p.add_argument('--cpu', action='store_true')
 p.add_argument('--baseline', action='store_true')
 p.add_argument('--baseline-source', type=Path)
 p.add_argument('--baseline-ref', default='30c263c')
@@ -34,8 +35,8 @@ subprocess.run(['glib-compile-schemas', '--strict', str(target / 'schemas')], ch
 probe = extensions / 'd2d-review@eidrien.local'
 probe.mkdir()
 (probe / 'metadata.json').write_text(json.dumps(dict(uuid=probe.name, name='D2D review probe', description='Isolated PR review', **{'shell-version':['46']})))
-shutil.copy(Path(__file__).with_name('dock-lifecycle.js'), probe / 'extension.js')
-shutil.copy(Path(__file__).with_name('dock-client.js'), root / 'client.js')
+shutil.copy(Path(__file__).with_name('cpu-activity.js' if a.cpu else 'dock-lifecycle.js'), probe / 'extension.js')
+shutil.copy(Path(__file__).with_name('cpu-client.js' if a.cpu else 'dock-client.js'), root / 'client.js')
 apps = root / 'data/applications'
 apps.mkdir()
 for name in ['First', 'Second']:
@@ -45,6 +46,9 @@ env = dict(os.environ, D2D_BASELINE='1' if a.baseline else '', REVIEW_ROOT=str(r
            XDG_CONFIG_HOME=str(root/'config'), XDG_DATA_HOME=str(root/'data'), XDG_CACHE_HOME=str(root/'cache'),
            XDG_RUNTIME_DIR=str(root/'runtime'), XDG_SESSION_TYPE='wayland', XDG_CURRENT_DESKTOP='GNOME',
            GSETTINGS_BACKEND='dconf', DBUS_SYSTEM_BUS_ADDRESS=f'unix:path={root}/runtime/system-bus')
+for name, directories in [('GI_TYPELIB_PATH', ['/usr/lib/gnome-shell/girepository-1.0', '/usr/lib/gnome-shell']),
+                          ('LD_LIBRARY_PATH', ['/usr/lib/gnome-shell'])]:
+    env[name] = ':'.join([d for d in directories if Path(d).is_dir()] + ([env[name]] if env.get(name) else []))
 (root / 'session.sh').write_text('''set -eu
 gsettings set org.gnome.shell enabled-extensions '["d2d-review@eidrien.local"]'
 gsettings set org.gnome.shell disabled-extensions '[]'

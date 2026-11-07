@@ -64,7 +64,8 @@ class DockDashItemContainer extends Dash.DashItemContainer {
     }
 
     showLabel() {
-        return AppIcons.itemShowLabel.call(this);
+        if (!this.child?._activityTooltipOwner)
+            AppIcons.itemShowLabel.call(this);
     }
 
     // we override the method show taken from:
@@ -465,7 +466,15 @@ export const DockDash = GObject.registerClass({
     }
 
     _onDestroy() {
+        this.prepareDestroy();
+    }
+
+    prepareDestroy() {
+        if (this._destroying)
+            return;
         this._destroying = true;
+        this._scrollView._d2dDestroying = true;
+        this._signalsHandler.destroy();
         if (this._redisplayLater) {
             Utils.laterRemove(this._redisplayLater);
             this._redisplayLater = 0;
@@ -478,10 +487,7 @@ export const DockDash = GObject.registerClass({
             delete this._requiresVisibilityTimeout;
         }
 
-        if (this._ensureActorVisibilityTimeoutId) {
-            GLib.source_remove(this._ensureActorVisibilityTimeoutId);
-            delete this._ensureActorVisibilityTimeoutId;
-        }
+        this._clearVisibilityWatch();
 
         if (this._showLabelTimeoutId) {
             GLib.source_remove(this._showLabelTimeoutId);
@@ -684,21 +690,29 @@ export const DockDash = GObject.registerClass({
         return Clutter.EVENT_STOP;
     }
 
-    _ensureItemVisibility(actor) {
-        if (actor?.hover) {
-            const destroyId =
-                actor.connect('destroy', () => this._ensureItemVisibility(null));
-            this._ensureActorVisibilityTimeoutId = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT, 100, () => {
-                    actor.disconnect(destroyId);
-                    ensureActorVisibleInScrollView(this._scrollView, actor);
-                    this._ensureActorVisibilityTimeoutId = 0;
-                    return GLib.SOURCE_REMOVE;
-                });
-        } else if (this._ensureActorVisibilityTimeoutId) {
+    _clearVisibilityWatch() {
+        if (this._ensureActorVisibilityTimeoutId)
             GLib.source_remove(this._ensureActorVisibilityTimeoutId);
-            this._ensureActorVisibilityTimeoutId = 0;
+        this._ensureActorVisibilityTimeoutId = 0;
+        if (this._visibilityWatch) {
+            const [actor, id] = this._visibilityWatch;
+            this._visibilityWatch = null;
+            actor.disconnect(id);
         }
+    }
+
+    _ensureItemVisibility(actor) {
+        this._clearVisibilityWatch();
+        if (this._destroying || !actor?.hover)
+            return;
+        this._visibilityWatch = [actor, actor.connect('destroy', () => this._ensureItemVisibility(null))];
+        this._ensureActorVisibilityTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            this._ensureActorVisibilityTimeoutId = 0;
+            this._clearVisibilityWatch();
+            if (!this._destroying)
+                ensureActorVisibleInScrollView(this._scrollView, actor);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _getAppRawStableSequence(app) {
@@ -1621,6 +1635,8 @@ export const DockDash = GObject.registerClass({
  * @param actor
  */
 function ensureActorVisibleInScrollView(scrollView, actor) {
+    if (scrollView._d2dDestroying)
+        return [0, 0];
     // access to scrollView.[hv]scroll was deprecated in gnome 46
     // instead, adjustment can be accessed directly
     // keep old way for backwards compatibility (gnome <= 45)

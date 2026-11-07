@@ -44,6 +44,7 @@ import {Extension} from './dependencies/shell/extensions/extension.js';
 
 import {StrutsManager} from './dockStruts.js';
 import {FileDragFocus} from './fileDragFocus.js';
+import {CpuActivityMonitor} from './cpuActivity.js';
 
 // Use __ () and N__() for the extension gettext domain, and reuse
 // the shell domain with the default _() and N_()
@@ -516,6 +517,7 @@ const DockedDash = GObject.registerClass({
     }
 
     _onDestroy() {
+        this.dash.prepareDestroy();
         this._fileDragFocus.destroy();
 
         // The dash, intellihide and themeManager have global signals as well internally
@@ -1877,6 +1879,7 @@ export class DockManager {
         this._discreteGpuAvailable = AppDisplay.discreteGpuAvailable;
         this._appSpread = new AppSpread.AppSpread();
         this._notificationsMonitor = new NotificationsMonitor.NotificationsMonitor();
+        this.cpuActivity = new CpuActivityMonitor(this._settings, this._extension.path);
         this._windowTracker = Shell.WindowTracker.get_default();
 
         const needsRemoteModel = () =>
@@ -2846,6 +2849,7 @@ export class DockManager {
     }
 
     destroy() {
+        this.cpuActivity.destroy();
         this.emit('destroy');
         if (this._toggleLater) {
             Utils.laterRemove(this._toggleLater);

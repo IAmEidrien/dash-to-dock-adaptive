@@ -1,4 +1,4 @@
-# Dash to Dock 110 — Adaptive 10.1
+# Dash to Dock 110 — Adaptive 11
 
 Experimental GNOME Shell fork based on the official Dash to Dock 110 extension
 release (`extensions.gnome.org-v110`, upstream commit `2dfae34`). All changes
@@ -8,6 +8,19 @@ its separate snapshot history. See GIT-WORKFLOW.md for migrating an installed
 checkout without deleting that history or changing personal settings.
 
 ## Changes
+
+- **Adaptive 11** adds **Adaptive (Experimental)** as the first running-indicator
+  style, with dot-to-line CPU activity, shared asynchronous sampling, numeric
+  indicator tooltips and conditional preferences. Existing indicator styles and
+  saved settings remain available. See [ADAPTIVE-CPU.md](ADAPTIVE-CPU.md) for the
+  experimental contract, process-attribution limitations and native validation.
+- Dependent preference controls now disappear instead of remaining greyed out.
+  This includes monitor selection when showing on all monitors, opacity controls,
+  hover details and advanced customization. Hidden values are retained.
+- **Scroll switch delay (ms)** now governs both window and workspace scroll
+  switching; it is hidden when scrolling is disabled. The existing
+  `workspace-scroll-delay` key and saved value are retained; `0` means no delay.
+
 
 - Adaptive 10.1 fixes dock teardown and transparency-handler ownership, and
   gives launcher reconciliation a dock-owned redraw source. DND still controls
@@ -63,7 +76,7 @@ checkout without deleting that history or changing personal settings.
 - Adds **Adaptive launcher ordering** (enabled by default). Running applications follow their earliest relevant workspace, then GNOME Shell `AppUsage.compare()` within each workspace, followed by the oldest relevant window's stable sequence and app ID/name. Sticky-only apps follow the active workspace.
 - Running favorites participate in the dynamic running section; favorites that are not currently relevant/running remain pinned before it. The favorite separator follows the actual static-favorite count.
 - Adaptive ordering rejects internal dock icon reorder drops. Existing dock icons may still enter GNOME's drag state; the drop policy avoids version-specific private `Draggable` internals.
-- Replaces Dash to Dock's fixed 250 ms workspace-scroll dead time with **Workspace switch delay (ms)**. Default: **10 ms**. `0` disables throttling.
+- Replaces Dash to Dock's fixed 250 ms scroll-switch dead time with **Scroll switch delay (ms)**. Default: **10 ms**. `0` disables throttling.
 - Preserves upstream behavior when adaptive ordering is disabled.
 - Adds **Switch workspace on hover in Overview**. This is app-centric and works with grouped icons. A configurable 0–2000 ms delay controls dwell time; `0` navigates immediately. Explicit window focus is optional and defaults off.
 - For multi-window applications, hover focus preserves the already-focused window when applicable, otherwise chooses the most-recently-used window on the active workspace, then the most-recently-used window anywhere.
