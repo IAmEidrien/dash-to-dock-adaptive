@@ -519,9 +519,9 @@ const DockedDash = GObject.registerClass({
         this._fileDragFocus.destroy();
 
         // The dash, intellihide and themeManager have global signals as well internally
-        this.dash.destroy();
-        this._intellihide.destroy();
         this._themeManager.destroy();
+        this._intellihide.destroy();
+        this.dash.destroy();
         this._workspaceSwitcherPopup?.destroy();
         delete this._staticBox;
 

@@ -1,4 +1,4 @@
-# Dash to Dock 110 — Adaptive 10
+# Dash to Dock 110 — Adaptive 10.1
 
 Experimental GNOME Shell fork based on the official Dash to Dock 110 extension
 release (`extensions.gnome.org-v110`, upstream commit `2dfae34`). All changes
@@ -8,6 +8,12 @@ its separate snapshot history. See GIT-WORKFLOW.md for migrating an installed
 checkout without deleting that history or changing personal settings.
 
 ## Changes
+
+- Adaptive 10.1 fixes dock teardown and transparency-handler ownership, and
+  gives launcher reconciliation a dock-owned redraw source. DND still controls
+  notification/emblem indicators; launcher order and interaction policy are
+  unchanged. See [LIFECYCLE-REGRESSION.md](LIFECYCLE-REGRESSION.md) for the native
+  comparison, failure-injection test and remaining diagnostic uncertainty.
 
 - Overview hover navigation now switches workspace by default, with **Also focus
   the application's window** as a separate, default-off option. Existing hover

@@ -5,6 +5,7 @@ import {
     Clutter,
     Gio,
     GLib,
+    Meta,
     GObject,
     Shell,
     St,
@@ -269,7 +270,13 @@ export const DockDash = GObject.registerClass({
         this.add_child(this._background);
         this.add_child(this._dashContainer);
 
-        this._workId = Main.initializeDeferredWork(this._box, () => this._redisplay());
+        // Own the source: a failed callback in Shell 46's shared deferred queue
+        // can strand all subsequent work, even while icon indicators stay live.
+        this._box.connect('notify::mapped', () => {
+            if (this._box.mapped)
+                this._queueRedisplay();
+        });
+        this._queueRedisplay();
 
         this._shellSettings = new Gio.Settings({
             schema_id: 'org.gnome.shell',
@@ -458,6 +465,11 @@ export const DockDash = GObject.registerClass({
     }
 
     _onDestroy() {
+        this._destroying = true;
+        if (this._redisplayLater) {
+            Utils.laterRemove(this._redisplayLater);
+            this._redisplayLater = 0;
+        }
         this._clearPaddingHover();
         this.iconAnimator.destroy();
 
@@ -502,8 +514,20 @@ export const DockDash = GObject.registerClass({
         return Dash.Dash.prototype._appIdListToHash.call(this, ...args);
     }
 
-    _queueRedisplay(...args) {
-        return Dash.Dash.prototype._queueRedisplay.call(this, ...args);
+    _queueRedisplay() {
+        if (this._destroying || this._redisplayLater)
+            return;
+        this._redisplayLater = Utils.laterAdd(Meta.LaterType.BEFORE_REDRAW, () => {
+            this._redisplayLater = 0;
+            if (this._destroying)
+                return GLib.SOURCE_REMOVE;
+            try {
+                this._redisplay();
+            } catch (error) {
+                logError(error, 'Dash-to-Dock launcher reconciliation failed');
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _hookUpLabel(...args) {
