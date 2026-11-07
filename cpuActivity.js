@@ -44,7 +44,9 @@ export class CpuActivityMonitor {
             [...this.tokens].some(t => t.active);
         const signature = active
             ? JSON.stringify([
-                [...new Set([...this.tokens].filter(t => t.active).map(t => t.app.get_id()))].sort(),
+                [
+                    ...new Set([...this.tokens].filter(t => t.active).map(t => t.app.get_id())),
+                ].sort(),
                 this.settings.get_int('adaptive-cpu-interval'),
             ])
             : '';
@@ -79,20 +81,23 @@ export class CpuActivityMonitor {
         this.cancel = null;
         this.previous = null;
         if (this.settings.get_enum('running-indicator-style') === ADAPTIVE_STYLE)
-            this.deliver(null);
+            this.deliver(null, 'waiting');
     }
 
-    deliver(snapshot) {
+    deliver(snapshot, state = 'unavailable') {
         for (const token of [...this.tokens]) {
             if (token.active && this.tokens.has(token))
-                token.changed(snapshot?.apps?.[token.app.get_id()] ?? null, snapshot?.cpus ?? 1);
+                token.changed(snapshot?.apps?.[token.app.get_id()] ?? null, snapshot?.cpus ?? 1, state);
         }
     }
 
     sample() {
-        if (this.process || this.destroyed ||
+        if (
+            this.process ||
+            this.destroyed ||
             this.settings.get_enum('running-indicator-style') !== ADAPTIVE_STYLE ||
-            ![...this.tokens].some(t => t.active))
+            ![...this.tokens].some(t => t.active)
+        )
             return;
         const apps = {};
         // Include other running applications when checking shared PID ownership.
@@ -108,6 +113,7 @@ export class CpuActivityMonitor {
             }
         }
         const {generation} = this;
+        const warmingUp = !this.previous;
         try {
             this.cancel = new Gio.Cancellable();
             const process = Gio.Subprocess.new(
@@ -152,7 +158,7 @@ export class CpuActivityMonitor {
                     )
                         snapshot = null;
                     this.previous = snapshot;
-                    this.deliver(snapshot);
+                    this.deliver(snapshot, snapshot && warmingUp ? 'waiting' : 'unavailable');
                 }
             );
         } catch {

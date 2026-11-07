@@ -35,7 +35,12 @@ The indicator's length is clamped at 100%; its tooltip keeps the actual number,
 including values above 100%. While monitoring is active, hover near the indicator
 edge of the launcher for an adjacent numerical tooltip. `~` and “process-tree
 estimate” identify estimated attribution. The ordinary launcher tooltip returns
-when the pointer leaves that region. A missing measurement is explicitly labeled.
+when the pointer leaves that region, unless **Hide application tooltip** is on.
+That setting keeps the CPU tooltip but omits the application title. The indicator
+hover strip extends outward through dock padding to its monitor's screen edge,
+within that launcher's along-axis bounds; it does not intercept clicks or scrolls.
+Hover dwell and the initial two-snapshot warm-up show **Waiting…**, without a CPU
+number. Actual failed measurements still report that they are unavailable.
 
 Compatible single dot/dash/solid-line styles reuse the same drawing actor and
 morph. Shapes without a faithful morph, including multiple separate dots/dashes,
@@ -98,12 +103,23 @@ The same update changes visibility, preserving values and existing settings keys
 ## Validation
 
 Tested on **actual GNOME Shell 46.0, nested Wayland with software rendering**, in
-an isolated container, at scale 1. This is native Shell/GJS/GTK validation, not
+an isolated container, at UI scales 1 and 2. This is native Shell/GJS/GTK validation, not
 validation on the primary user's TV or every declared Shell release.
+
+The initial native CPU validation ran with software rendering, where GNOME
+inhibited animations. It therefore missed a missing actor/frame-clock association
+in the animation timeline. A follow-up reproduced the frozen indicator with
+animations explicitly enabled and the supplied GNOME 46 theme loaded. Timelines
+now belong to the drawing actor, detach on cancellation, and skip animation while
+the actor is unmapped. The harness forces compositor animations on and asserts
+that GNOME reports them enabled before checking actual frame-driven progress;
+it still verifies the user's reduced-motion setting separately.
 
 The native CPU probe covers a real GTK application's busy descendant, shared
 sampling across two actual dock actors on one monitor, style transitions and
-actor reuse, rapid hover, virtual-pointer tooltip positioning, values above
+actor reuse, animated idle Line/Dot changes, rapid hover, virtual-pointer tooltip
+positioning and screen-edge activation, hidden application title compatibility,
+waiting/failure states, values above
 100%, sampler failure, reduced motion, unchanged launcher membership/order,
 extension teardown and re-enable. The real preferences probe checks conditional
 controls, retained values and advanced dialogs. A separate native lifecycle probe
@@ -122,9 +138,14 @@ Run the headless regressions with `make check`, strict schemas with
 On a GNOME-46-capable test host with the required runtime dependencies, use:
 
 ```sh
-python3 tests/native/dock-lifecycle-run.py --cpu --output /tmp/d2d-cpu-review
+python3 tests/native/dock-lifecycle-run.py --cpu --position 3 --scale 2 --output /tmp/d2d-cpu-review
 python3 tests/native/dock-lifecycle-run.py --output /tmp/d2d-lifecycle-review
 ```
+
+Position values are top `0`, right `1`, bottom `2`, left `3`. `--scale` sets the
+Shell UI theme scale for the isolated probe, not a physical monitor's hardware
+scale. `--theme /path/to/gnome-shell.css` optionally loads an additional stylesheet
+for a theme compatibility check without committing that stylesheet or settings.
 
 Each output directory must be new. The harness starts an isolated D-Bus, Xvfb
 host and nested Wayland Shell; it writes JSON assertions, logs and a tooltip

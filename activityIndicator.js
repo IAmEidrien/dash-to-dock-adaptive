@@ -13,9 +13,11 @@ export function createActivityIndicator(Base, ordinary, utils) {
             this.monitor = manager.cpuActivity;
             this.fraction = 0;
             this._cpu = null;
-            this.token = this.monitor.watch(source.app, (sample, cpus) => {
+            this.sampleState = 'waiting';
+            this.token = this.monitor.watch(source.app, (sample, cpus, state) => {
                 this.rawPercent = sample?.percent;
                 this.sampleCpus = cpus;
+                this.sampleState = state ?? 'unavailable';
                 this._scaleSample();
                 this._target();
                 this._tooltip();
@@ -26,6 +28,11 @@ export function createActivityIndicator(Base, ordinary, utils) {
             this._signalsHandler.add(source, 'motion-event', () => {
                 this._tooltip();
                 return Clutter.EVENT_PROPAGATE;
+            });
+            this._signalsHandler.add(this.settings, 'changed::hide-tooltip', () => {
+                if (this.settings.get_boolean('hide-tooltip'))
+                    this._source.get_parent()?.label?.hide();
+                this._tooltip();
             });
             for (const key of [
                 'adaptive-cpu-idle',
@@ -50,9 +57,13 @@ export function createActivityIndicator(Base, ordinary, utils) {
         }
 
         _scaleSample() {
-            this._cpu = Number.isFinite(this.rawPercent) && this.rawPercent >= 0
-                ? this.rawPercent / (this.settings.get_string('adaptive-cpu-scale') === 'total'
-                    ? Math.max(1, this.sampleCpus) : 1) : null;
+            this._cpu =
+                Number.isFinite(this.rawPercent) && this.rawPercent >= 0
+                    ? this.rawPercent /
+                      (this.settings.get_string('adaptive-cpu-scale') === 'total'
+                          ? Math.max(1, this.sampleCpus)
+                          : 1)
+                    : null;
         }
 
         _hideTooltip(restore = true) {
@@ -60,18 +71,83 @@ export function createActivityIndicator(Base, ordinary, utils) {
             if (this._source._activityTooltipOwner !== this)
                 return;
             this._source._activityTooltipOwner = null;
-            if (restore && !this.dead && this._source.hover)
+            if (
+                restore &&
+                !this.dead &&
+                this._source.hover &&
+                !this.settings.get_boolean('hide-tooltip') &&
+                this._source.shouldShowTooltip?.()
+            )
                 this._source.get_parent()?.showLabel?.();
         }
 
+        // The dock forwards motion without consuming it. Extend only the indicator
+        // strip toward the monitor edge, keeping the launcher's along-axis bounds.
+        updatePointer(clear = false) {
+            const before = this.edgeHover;
+            this.edgeHover =
+                !clear &&
+                this.style === ADAPTIVE_STYLE &&
+                this._source.mapped &&
+                this._pointerOnIndicator();
+            if (before !== this.edgeHover)
+                this._monitoring();
+            else
+                this._tooltip();
+        }
+
+        _pointerOnIndicator() {
+            const [x, y] = this._source._iconContainer.get_transformed_position();
+            const [width, height] = this._source._iconContainer.get_transformed_size();
+            const [sx, sy] = this._source.get_transformed_position();
+            const [sw, sh] = this._source.get_transformed_size();
+            const [px, py] = global.get_pointer();
+            const monitor = Main.layoutManager.findMonitorForActor(this._source);
+            if (
+                !monitor ||
+                x + width <= monitor.x ||
+                x >= monitor.x + monitor.width ||
+                y + height <= monitor.y ||
+                y >= monitor.y + monitor.height
+            )
+                return false;
+            const band = 10 * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+            switch (this._side) {
+            case St.Side.LEFT:
+                return py >= sy && py < sy + sh && px >= monitor.x && px <= x + band;
+            case St.Side.RIGHT:
+                return (
+                    py >= sy &&
+                        py < sy + sh &&
+                        px < monitor.x + monitor.width &&
+                        px >= x + width - band
+                );
+            case St.Side.TOP:
+                return px >= sx && px < sx + sw && py >= monitor.y && py <= y + band;
+            case St.Side.BOTTOM:
+                return (
+                    px >= sx &&
+                        px < sx + sw &&
+                        py < monitor.y + monitor.height &&
+                        py >= y + height - band
+                );
+            default:
+                return false;
+            }
+        }
+
         duration() {
-            return St.Settings.get().enable_animations ? this.settings.get_int('adaptive-cpu-animation') : 0;
+            return St.Settings.get().enable_animations
+                ? this.settings.get_int('adaptive-cpu-animation')
+                : 0;
         }
 
         setStyle(style) {
             const wasAdaptive = this.style === ADAPTIVE_STYLE;
             const previous = this.style;
             this.style = style;
+            if (style !== ADAPTIVE_STYLE)
+                this.edgeHover = false;
             if (style === ADAPTIVE_STYLE && previous !== undefined && previous !== ADAPTIVE_STYLE)
                 this.fraction = this._ordinaryFraction(previous);
             if (style === ADAPTIVE_STYLE && previous !== ADAPTIVE_STYLE)
@@ -102,7 +178,9 @@ export function createActivityIndicator(Base, ordinary, utils) {
             this.dwell = 0;
             const adaptive = this.style === ADAPTIVE_STYLE && this._source.running;
             const delay = this.settings.get_int('adaptive-cpu-hover-delay');
-            const wanted = adaptive && (delay === 0 || (this._source.mapped && this._source.hover));
+            const wanted =
+                adaptive &&
+                (delay === 0 || (this._source.mapped && (this._source.hover || this.edgeHover)));
             if (!wanted) {
                 this.monitor.activate(this.token, false);
                 this.active = false;
@@ -122,6 +200,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 if (this.dead)
                     return GLib.SOURCE_REMOVE;
                 this.active = true;
+                this.sampleState = 'waiting';
                 this.monitor.activate(this.token, true);
                 this._target();
                 this._tooltip();
@@ -131,6 +210,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 activate();
             else
                 this.dwell = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, activate);
+            this._tooltip();
         }
 
         _target() {
@@ -154,19 +234,22 @@ export function createActivityIndicator(Base, ordinary, utils) {
             this.timeline = null;
             this.animationIds.forEach(id => timeline.disconnect(id));
             timeline.stop();
+            timeline.set_actor(null);
         }
 
         animate(target, completed = () => {}) {
             this.stopAnimation();
             const from = this.fraction;
-            const duration = this.duration();
+            const duration = this._area.mapped ? this.duration() : 0;
             if (!duration || Math.abs(target - from) < 0.001) {
                 this.fraction = target;
                 this._area.queue_repaint();
                 completed();
                 return;
             }
-            this.timeline = new Clutter.Timeline({duration});
+            // Mutter schedules timelines through an actor's stage-view frame clock.
+            // Without it, animations freeze when GNOME animations are enabled.
+            this.timeline = new Clutter.Timeline({duration, actor: this._area});
             this.animationIds = [
                 this.timeline.connect('new-frame', timeline => {
                     const progress = 1 - (1 - timeline.get_progress()) ** 3;
@@ -211,41 +294,40 @@ export function createActivityIndicator(Base, ordinary, utils) {
         }
 
         _tooltip() {
-            if (this.dead || !this.active || !this._source.mapped || !this._source.hover) {
+            if (
+                this.dead ||
+                this.style !== ADAPTIVE_STYLE ||
+                !this._source.running ||
+                !this._source.mapped ||
+                !(this._source.hover || this.edgeHover) ||
+                !this._pointerOnIndicator()
+            ) {
                 this._hideTooltip();
                 return;
             }
             const [x, y] = this._source._iconContainer.get_transformed_position();
             const [width, height] = this._source._iconContainer.get_transformed_size();
-            const [px, py] = global.get_pointer();
             const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
             const side = this._side;
-            const distances = {
-                [St.Side.BOTTOM]: y + height - py,
-                [St.Side.TOP]: py - y,
-                [St.Side.LEFT]: px - x,
-                [St.Side.RIGHT]: x + width - px,
-            };
-            const distance = distances[side];
-            if (distance < 0 || distance > 10 * scale) {
-                this._hideTooltip();
-                return;
-            }
             this.label ??= new St.Label({style_class: 'dash-label', reactive: false});
             if (!this.label.get_parent())
                 Main.uiGroup.add_child(this.label);
-            const value =
-                this._cpu === null
-                    ? 'CPU measurement unavailable'
-                    : `~${this._cpu.toFixed(1)}% CPU · process-tree estimate`;
+            let value = 'Waiting…';
+            if (this.active && this._cpu !== null)
+                value = `~${this._cpu.toFixed(1)}% CPU · process-tree estimate`;
+            else if (this.active && this.sampleState !== 'waiting')
+                value = 'CPU measurement unavailable';
             this._source._activityTooltipOwner = this;
             this._source.get_parent()?.label?.hide();
-            this.label.text = `${this._source.app.get_name()}: ${value}`;
+            this.label.text = this.settings.get_boolean('hide-tooltip')
+                ? value
+                : `${this._source.app.get_name()}: ${value}`;
             this.label.show();
             const [, naturalWidth] = this.label.get_preferred_width(-1);
             const [, naturalHeight] = this.label.get_preferred_height(naturalWidth);
             const monitor =
-                Main.layoutManager.findMonitorForActor(this._source) ?? Main.layoutManager.primaryMonitor;
+                Main.layoutManager.findMonitorForActor(this._source) ??
+                Main.layoutManager.primaryMonitor;
             let tx = x + width / 2 - naturalWidth / 2;
             let ty = y + height / 2 - naturalHeight / 2;
             if (side === St.Side.LEFT)

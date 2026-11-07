@@ -11,6 +11,15 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
         fallback = 0;
     const motion = {enable_animations: true};
     class Timeline {
+        constructor({actor}) {
+            assert.ok(actor, 'timeline needs the real drawing actor for its frame clock');
+            this.actor = actor;
+        }
+
+        set_actor(actor) {
+            this.actor = actor;
+        }
+
         callbacks = new Map();
         serial = 0;
         progress = 0;
@@ -52,7 +61,7 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
         constructor(source) {
             this._source = source;
             this._signalsHandler = {add() {}, destroy() {}};
-            this._area = {queue_repaint() {}};
+            this._area = {mapped: true, queue_repaint() {}};
         }
 
         destroy() {}
@@ -90,6 +99,7 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
     assert.ok(displayed > 0 && displayed < 0.5);
     update({percent: 250}, 1);
     assert.ok(first.stopped);
+    assert.equal(first.actor, null);
     assert.equal(first.callbacks.size, 0);
     const second = indicator.timeline;
     second.fire('new-frame');
@@ -110,9 +120,67 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
     assert.equal(indicator.fraction, 0.25);
     assert.equal(indicator.timeline, null);
     motion.enable_animations = true;
+    indicator._area.mapped = false;
+    indicator.animate(0.5);
+    assert.equal(indicator.fraction, 0.5);
+    assert.equal(indicator.timeline, null, 'unstaged actors never start a timeline');
+    indicator._area.mapped = true;
     indicator.animate(1);
     const pending = indicator.timeline;
     indicator.destroy();
     assert.ok(removed && pending.stopped);
     assert.equal(pending.callbacks.size, 0);
+});
+
+
+test('indicator hover extends only its strip to each monitor edge at both UI scales', () => {
+    const code = readFileSync(new URL('../activityIndicator.js', import.meta.url), 'utf8')
+        .replace(/^import .*;\n/gm, '').replace(/export /g, '');
+    let pointer = [0, 0], scale = 1, box = [30, 100, 80, 80];
+    const monitor = {x: 0, y: 0, width: 500, height: 400};
+    const Side = {TOP: 0, RIGHT: 1, BOTTOM: 2, LEFT: 3};
+    const factory = vm.runInNewContext(`${code};createActivityIndicator`, {
+        St: {Side, ThemeContext: {get_for_stage: () => ({scale_factor: scale})}},
+        Main: {layoutManager: {findMonitorForActor: () => monitor}},
+        global: {stage: {}, get_pointer: () => pointer},
+    });
+    const Indicator = factory(class {}, {}, {});
+    const indicator = Object.create(Indicator.prototype);
+    indicator._source = {
+        _iconContainer: {
+            get_transformed_position: () => box.slice(0, 2),
+            get_transformed_size: () => box.slice(2),
+        },
+        get_transformed_position: () => [box[0] - 10, box[1] - 10],
+        get_transformed_size: () => [100, 100],
+    };
+    const hit = (x, y) => {
+        pointer = [x, y];
+        return indicator._pointerOnIndicator();
+    };
+    for (scale of [1, 2]) {
+        indicator._side = Side.LEFT;
+        box = [30, 100, 80, 80];
+        assert.ok(hit(0, 140));
+        assert.ok(hit(30 + 10 * scale, 140));
+        assert.equal(hit(70, 140), false);
+        assert.equal(hit(-1, 140), false);
+        assert.equal(hit(0, 89), false);
+        indicator._side = Side.RIGHT;
+        box = [390, 100, 80, 80];
+        assert.ok(hit(499, 140));
+        assert.equal(hit(500, 140), false);
+        assert.equal(hit(430, 140), false);
+        indicator._side = Side.TOP;
+        box = [180, 50, 80, 80];
+        assert.ok(hit(220, 0));
+        assert.equal(hit(220, -1), false);
+        assert.equal(hit(220, 90), false);
+        indicator._side = Side.BOTTOM;
+        box = [180, 290, 80, 80];
+        assert.ok(hit(220, 399));
+        assert.equal(hit(220, 400), false);
+        assert.equal(hit(220, 330), false);
+        assert.equal(hit(600, 399), false);
+    }
 });

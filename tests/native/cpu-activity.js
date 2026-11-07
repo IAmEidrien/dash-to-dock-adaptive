@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Eidrien
 // SPDX-License-Identifier: MIT
 /* eslint-disable no-await-in-loop */
+/* global global */
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
@@ -41,17 +42,31 @@ export default class Probe extends Extension {
                 GLib.file_set_contents(`${root}/progress.json`, JSON.stringify(checks));
             };
         Main.overview.hide();
+        St.ThemeContext.get_for_stage(global.stage).scale_factor = Number(
+            GLib.getenv('REVIEW_SCALE') ?? 1
+        );
+        new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_boolean('enable-animations', true);
+        const themeFile = Gio.File.new_for_path(`${root}/review-theme.css`);
+        if (themeFile.query_exists(null))
+            St.ThemeContext.get_for_stage(global.stage).get_theme().load_stylesheet(themeFile);
         Main.extensionManager.enableExtension(uuid);
         await wait(1000);
         const info = Main.extensionManager.lookup(uuid);
         check(info.state === 1, 'extension enabled');
+        check(St.Settings.get().enable_animations, 'native animations enabled before geometry tests');
         const module = await import(Gio.File.new_for_path(`${info.path}/extension.js`).get_uri());
         const settings = info.stateObj.getSettings('org.gnome.shell.extensions.dash-to-dock');
         settings.set_boolean('apply-custom-theme', false);
         settings.set_boolean('running-indicator-dominant-color', true);
+        settings.set_boolean('extend-height', true);
+        settings.set_boolean('custom-theme-shrink', true);
+        settings.set_boolean('icon-size-fixed', false);
+        settings.set_int('dash-max-icon-size', 38);
+        settings.set_boolean('show-favorites', false);
+        settings.set_boolean('show-apps-at-top', true);
         settings.set_int('adaptive-cpu-interval', 1);
         settings.set_int('adaptive-cpu-hover-delay', 0);
-        settings.set_enum('dock-position', 2);
+        settings.set_enum('dock-position', Number(GLib.getenv('REVIEW_POSITION') ?? 2));
         await wait(400);
         Gio.Subprocess.new(['gjs', '-m', `${root}/client.js`, 'org.eidrien.D2DReviewSecond'], 0);
         await wait(1500);
@@ -77,6 +92,36 @@ export default class Probe extends Extension {
             manager.cpuActivity.tokens.size >= 1 && !!manager.cpuActivity.timer,
             'shared sampler active'
         );
+        indicator().token.changed({percent: 80}, 4);
+        check(indicator().timeline?.get_actor() === indicator()._area, 'animation owns the drawing actor frame clock');
+        await wait(450);
+        check(
+            Math.abs(indicator().fraction - 0.8) < 0.02,
+            'animation advances real rendered CPU geometry'
+        );
+        print(`RENDER ${JSON.stringify({
+            fraction: indicator().fraction,
+            width: indicator()._width,
+            height: indicator()._height,
+            scale: St.ThemeContext.get_for_stage(global.stage).scale_factor,
+        })}`);
+        const debugStream = Gio.File.new_for_path(`${root}/initial-indicator.png`).replace(
+            null,
+            false,
+            Gio.FileCreateFlags.NONE,
+            null
+        );
+        await new Shell.Screenshot().screenshot(false, debugStream);
+        debugStream.close(null);
+        settings.set_int('adaptive-cpu-hover-delay', 500);
+        settings.set_string('adaptive-cpu-idle', 'line');
+        await wait(450);
+        check(indicator().fraction > 0.98, 'inactive hover monitoring renders idle line');
+        settings.set_string('adaptive-cpu-idle', 'dot');
+        await wait(450);
+        check(indicator().fraction < 0.02, 'idle preference change renders dot');
+        settings.set_string('adaptive-cpu-idle', 'line');
+        settings.set_int('adaptive-cpu-hover-delay', 0);
         const area = indicator()._area;
         settings.set_enum('running-indicator-style', 5);
         await wait(400);
@@ -133,18 +178,66 @@ export default class Probe extends Extension {
             .create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
         const [x, y] = icon()._iconContainer.get_transformed_position(),
             [width, height] = icon()._iconContainer.get_transformed_size();
-        backend.notify_absolute_motion(GLib.get_monotonic_time(), x + width / 2, y + height - 2);
-        await wait(1600);
+        const side = indicator()._side;
+        const point = (edge = false) => {
+            const monitor = Main.layoutManager.primaryMonitor;
+            switch (side) {
+            case St.Side.LEFT:
+                return [edge ? monitor.x : x + 2, y + height / 2];
+            case St.Side.RIGHT:
+                return [edge ? monitor.x + monitor.width - 1 : x + width - 2, y + height / 2];
+            case St.Side.TOP:
+                return [x + width / 2, edge ? monitor.y + 25 : y + 2];
+            default:
+                return [x + width / 2, edge ? monitor.y + monitor.height - 1 : y + height - 2];
+            }
+        };
+        const move = coords => backend.notify_absolute_motion(GLib.get_monotonic_time(), ...coords);
+        settings.set_boolean('hide-tooltip', true);
+        settings.set_int('adaptive-cpu-hover-delay', 500);
+        move(point());
+        await wait(100);
+        check(indicator().label?.text === 'Waiting…', 'hover dwell shows waiting without app title');
+        await wait(600);
+        check(indicator().active && indicator().label.text === 'Waiting…', 'first CPU snapshot remains a waiting state');
+        await wait(1000);
         check(indicator().active, 'real pointer activates monitoring after dwell');
         check(indicator().label?.visible, 'indicator hover shows tooltip beside launcher');
+        check(
+            !indicator().label.text.includes(icon().app.get_name()),
+            'hidden application title omitted from CPU tooltip'
+        );
+        move([x + width / 2, y + height / 2]);
+        await wait(150);
+        check(
+            !indicator().label.visible && !icon().get_parent().label.visible,
+            'return to icon respects hide application tooltip'
+        );
+        icon().get_parent().showLabel();
+        check(!icon().get_parent().label.visible, 'delayed ordinary label cannot bypass hide setting');
+        move(point(true));
+        await wait(700);
+        check(
+            indicator().active && indicator().label.visible,
+            'screen edge behind indicator remains hover target'
+        );
+        move(point());
+        await wait(100);
         indicator().token.changed({percent: 250}, 4);
         check(indicator().label.text.includes('62.5%'), 'total-capacity tooltip scales actual percent');
         settings.set_string('adaptive-cpu-scale', 'core');
         indicator().token.changed({percent: 250}, 4);
         check(indicator().label.text.includes('250.0%'), 'tooltip preserves CPU above 100 percent');
         await wait(350);
-        indicator().token.changed({percent: 250}, 1);
-        check(indicator().fraction <= 1, 'visual activity clamps to full line');
+        check(
+            indicator().fraction > 0.98 && indicator().fraction <= 1,
+            'visual activity reaches and clamps to full line'
+        );
+        settings.set_boolean('hide-tooltip', false);
+        check(
+            indicator().label.text.includes(icon().app.get_name()),
+            'application title restored when setting allows it'
+        );
         const stream = Gio.File.new_for_path(`${root}/activity-tooltip.png`).replace(
             null,
             false,
@@ -161,6 +254,7 @@ export default class Probe extends Extension {
         manager.cpuActivity.sample();
         await wait(1300);
         check(indicator()._cpu === null, 'failed worker falls back to ordinary indicator');
+        check(indicator().label.text.includes('unavailable'), 'failed worker remains distinguishable from waiting');
         manager.cpuActivity.path = originalPath;
         await wait(1800);
         settings.set_enum('running-indicator-style', 2);

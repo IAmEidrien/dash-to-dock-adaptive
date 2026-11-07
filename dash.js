@@ -64,6 +64,10 @@ class DockDashItemContainer extends Dash.DashItemContainer {
     }
 
     showLabel() {
+        if (Docking.DockManager.settings.hideTooltip) {
+            this.label.hide();
+            return;
+        }
         if (!this.child?._activityTooltipOwner)
             AppIcons.itemShowLabel.call(this);
     }
@@ -363,10 +367,13 @@ export const DockDash = GObject.registerClass({
 
         this._signalsHandler.add([
             global.stage, 'captured-event', (_stage, event) => {
-                if (event.type() === Clutter.EventType.MOTION)
+                if (event.type() === Clutter.EventType.MOTION) {
+                    this._updateActivityHover();
                     this._updatePaddingHover(event);
-                else if (event.type() === Clutter.EventType.LEAVE)
+                } else if (event.type() === Clutter.EventType.LEAVE) {
+                    this._updateActivityHover(true);
                     this._clearPaddingHover();
+                }
                 return Clutter.EVENT_PROPAGATE;
             },
         ], [Main.overview, 'hiding', () => this._clearPaddingHover()],
@@ -377,6 +384,13 @@ export const DockDash = GObject.registerClass({
             () => this._clearPaddingHover()]);
 
         this.connect('destroy', this._onDestroy.bind(this));
+    }
+
+    _updateActivityHover(clear = false) {
+        if (this._destroying || Docking.DockManager.settings.runningIndicatorStyle !== 10)
+            return;
+        for (const icon of this.getAppIcons())
+            icon._indicator?._running.updatePointer?.(clear || Main.overview._inWindowDrag);
     }
 
     _clearPaddingHover() {

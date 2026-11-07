@@ -9,6 +9,13 @@ checkout without deleting that history or changing personal settings.
 
 ## Changes
 
+- Adaptive 11 follow-up fixes frozen CPU/idle geometry with animations enabled
+  by attaching its timeline to the drawing actor's frame clock. Indicator hover
+  extends toward the monitor edge. **Hide application tooltip** suppresses the
+  CPU tooltip's app title and prevents the ordinary title from reappearing.
+  Dwell and initial sampling show **Waiting…**, distinct from actual failure.
+
+
 - **Adaptive 11** adds **Adaptive (Experimental)** as the first running-indicator
   style, with dot-to-line CPU activity, shared asynchronous sampling, numeric
   indicator tooltips and conditional preferences. Existing indicator styles and
