@@ -67,7 +67,25 @@ export class CpuActivityMonitor {
         this.stop();
         if (!active)
             return;
+        this.startupPhase = 'baseline';
         this.sample();
+    }
+
+    _scheduleNext(snapshot) {
+        if (!this.startupPhase || this.destroyed)
+            return;
+        if (this.startupPhase === 'baseline' && snapshot) {
+            this.startupPhase = 'followup';
+            // One short interval provides a valid delta without waiting for the
+            // user's steady-state polling interval. Only schedule after baseline.
+            this.bootstrap = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+                this.bootstrap = 0;
+                this.sample();
+                return GLib.SOURCE_REMOVE;
+            });
+            return;
+        }
+        this.startupPhase = null;
         this.timer = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT,
             this.settings.get_int('adaptive-cpu-interval'),
@@ -80,6 +98,10 @@ export class CpuActivityMonitor {
 
     stop() {
         this.generation++;
+        if (this.bootstrap)
+            GLib.source_remove(this.bootstrap);
+        this.bootstrap = 0;
+        this.startupPhase = null;
         if (this.timer)
             GLib.source_remove(this.timer);
         this.timer = 0;
@@ -170,6 +192,8 @@ export class CpuActivityMonitor {
                         snapshot = null;
                     this.previous = snapshot;
                     this.deliver(snapshot, snapshot && warmingUp ? 'waiting' : 'unavailable');
+                    if (generation === this.generation)
+                        this._scheduleNext(snapshot);
                 }
             );
         } catch {
@@ -182,6 +206,7 @@ export class CpuActivityMonitor {
             this.cancel = null;
             this.previous = null;
             this.deliver(null);
+            this._scheduleNext(null);
         }
     }
 

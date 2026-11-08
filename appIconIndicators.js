@@ -8,7 +8,7 @@ import {
     St,
 } from './dependencies/gi.js';
 
-import {createActivityIndicator} from './activityIndicator.js';
+import {createActivityIndicator, solidIndicatorGeometry} from './activityIndicator.js';
 import {ACTIVITY_STYLE} from './cpuActivity.js';
 
 import {Main} from './dependencies/shell/ui.js';
@@ -134,7 +134,10 @@ export class AppIconIndicator {
         }
 
         if (old && old !== runningIndicator) {
+            old.retiring = true;
+            old.clearIdleStyle?.();
             old.setDockMode?.(null);
+            runningIndicator.syncIdleStyle?.();
             const duration = St.Settings.get().enable_animations
                 ? settings.get_int('adaptive-cpu-animation') : 0;
             if ((this._style === ACTIVITY_STYLE || runningIndicatorStyle === ACTIVITY_STYLE) &&
@@ -581,13 +584,11 @@ class RunningIndicatorSegmented extends RunningIndicatorDots {
 class RunningIndicatorSolid extends RunningIndicatorDots {
     _drawIndicator(cr) {
         if (this._source.running) {
-            const size =  Math.max(this._width / 20, this._borderWidth);
-            let padding = this._borderWidth;
-            // For the backlit case here we don't want the outer border visible
-            if (Docking.DockManager.settings.unityBacklitItems &&
-                !Docking.DockManager.settings.customThemeCustomizeRunningDots)
-                padding = 0;
-            const yOffset = this._height - padding - size;
+            const {settings} = Docking.DockManager;
+            const {thickness: size, y: yOffset} = solidIndicatorGeometry(
+                this._width, this._height, this._borderWidth,
+                settings.unityBacklitItems, settings.customThemeCustomizeRunningDots
+            );
 
             cr.setLineWidth(this._borderWidth);
             Utils.cairoSetSourceColor(cr, this._borderColor);
@@ -786,6 +787,7 @@ const RunningIndicatorActivity = createActivityIndicator(RunningIndicatorDots, {
     1: RunningIndicatorDots.prototype._drawIndicator,
     3: RunningIndicatorDashes.prototype._drawIndicator,
     5: RunningIndicatorSolid.prototype._drawIndicator,
+    7: RunningIndicatorMetro.prototype._drawIndicator,
     9: RunningIndicatorDot.prototype._drawIndicator,
 }, Utils);
 

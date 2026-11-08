@@ -63,6 +63,17 @@ app.connect('activate', () => {
         check(!activityTitle.get_parent().visible, 'CPU options hidden for ordinary style');
         settings.set_enum('running-indicator-style', 10);
         check(activityTitle.get_parent().visible, 'CPU options shown for Activity mode');
+        const idle = widgets
+            .find(w => w instanceof Gtk.Label && w.label === 'Idle appearance')
+            .get_parent()
+            .get_last_child();
+        for (const name of ['dot', 'line', 'metro']) {
+            idle.set_active_id(name);
+            check(settings.get_string('adaptive-cpu-idle') === name, `idle appearance saved: ${name}`);
+        }
+        settings.set_enum('running-indicator-style', 2);
+        settings.set_enum('running-indicator-style', 10);
+        check(idle.get_active_id() === 'metro', 'Metro idle survives style changes');
         settings.reset('adaptive-cpu-animation');
         check(settings.get_int('adaptive-cpu-animation') === 1000, 'animation default is one second');
         const animationRow = widgets
@@ -158,6 +169,7 @@ app.connect('activate', () => {
                 w.response(Gtk.ResponseType.CLOSE);
         }
 
+
         byId('running_indicators_advance_settings_button').emit('clicked');
         await wait(100);
         settings.set_boolean('custom-theme-customize-running-dots', true);
@@ -174,6 +186,7 @@ app.connect('activate', () => {
             if (w instanceof Gtk.Dialog)
                 w.response(Gtk.ResponseType.CLOSE);
         }
+
 
         settings.set_enum('transparency-mode', 3);
         byId('dynamic_opacity_button').emit('clicked');
@@ -192,6 +205,7 @@ app.connect('activate', () => {
             if (w instanceof Gtk.Dialog)
                 w.response(Gtk.ResponseType.CLOSE);
         }
+
 
         app.hold();
         window.close();

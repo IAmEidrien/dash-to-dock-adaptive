@@ -38,10 +38,10 @@ their values.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| Idle appearance | Dot | Dot or Line outside Activity mode. During Activity mode, valid CPU activity always uses the dot-to-line scale. |
+| Idle appearance | Dot | Dot, Line (Solid), or Metro outside Activity mode. During Activity mode, valid CPU activity always uses the dot-to-line scale. |
 | CPU scale | Per-core | 100% means one logical CPU's capacity. Multi-threaded apps can exceed 100%. |
 | Hover delay | 500 ms | Enter a running indicator's CPU-tooltip region for this long to start dock-wide Activity mode. Leave the dock to stop. `0` keeps Activity mode active. Range 0–5000 ms. |
-| Polling interval | 2 seconds | Range 1–60 seconds. A new monitoring session needs two snapshots before a CPU value is available. |
+| Polling interval | 2 seconds | Range 1–60 seconds. Startup takes an immediate baseline and one follow-up about 250 ms after the baseline reply, then resumes this normal interval. |
 | Animation duration | 1.0 second | Range 0–5 seconds in 0.1-second steps. `0` disables animation and visual smoothing. GNOME's reduced-motion setting also makes changes immediate. |
 
 **Total system capacity** divides the per-core measurement by the number of
@@ -67,6 +67,36 @@ morph. Shapes without a faithful morph, including multiple separate dots/dashes,
 crossfade where drawing areas are available. The default theme indicator uses an
 immediate compatible fallback. New samples animate from the currently displayed
 length, so a new target does not restart from zero.
+
+## Initial reading and idle appearances
+
+Activity mode still begins with an asynchronous CPU baseline. A single follow-up
+is scheduled **250 ms after a valid baseline reply**, rather than waiting for the
+normal polling interval. That produces the first valid CPU delta sooner; worker
+startup and scan time also contribute to the wait. Normal polling begins after
+that follow-up and retains the saved interval. No faster sustained polling is
+introduced. Both snapshots use the existing validity, PID identity, ownership
+and minimum elapsed-time checks. Unattributable apps can still report unavailable.
+
+Leaving Activity mode, switching styles, replacing a monitoring session or
+disabling the extension cancels the pending follow-up and any in-flight worker.
+An unsuccessful baseline retries at the normal interval, avoiding a rapid error
+loop. Short initial samples can be noisier than longer polling averages; visual
+smoothing remains separate from the actual numerical tooltip.
+
+The active capsule now shares **Solid's body-height and edge-padding calculation**,
+including custom border and backlighting behavior. Its dot and full line remain
+rounded, with the same thickness as Solid at 100% and 200% UI scaling. Colors,
+position, animation and the existing hover geometry are retained.
+
+Outside Activity mode, **Dot** uses the rounded capsule at minimum length.
+**Line** uses the existing Solid renderer. **Metro** is the one added idle option,
+reusing Metro's flat launcher background, line and multi-window shading/focused
+stack treatment. Metro is more than a corner-radius variant. Its launcher styling
+is confined to idle state and removed when Activity mode starts or its renderer
+is destroyed. All idle choices return to the same rounded CPU-driven capsule in
+Activity mode; no new settings category or enable toggle is added. Existing Dot
+and Line enum values remain unchanged.
 
 ## Visual smoothing
 
@@ -157,12 +187,14 @@ that GNOME reports them enabled before checking actual frame-driven progress;
 it still verifies the user's reduced-motion setting separately. The refinement
 adds native checks for dock-wide activation, indicator-only triggering, whole-dock
 persistence, rapid entry/exit, five-second retargeting, smoothing and zero-duration
-precision, plus real GTK checks of the fractional-second control. Headless tests
+precision, plus real GTK checks of the fractional-second control. Later checks
+cover the 250 ms startup pair, follow-up cancellation, normal sustained cadence,
+Metro state ownership and parity with the actual Solid renderer at both UI scales. Headless tests
 also cover independent dock states and time-aware smoothing/deadband behavior.
 
 The native CPU probe covers a real GTK application's busy descendant, shared
 sampling across two actual dock actors on one monitor, style transitions and
-actor reuse, animated idle Line/Dot changes, rapid hover, virtual-pointer tooltip
+actor reuse, idle Dot/Solid/Metro changes, rapid hover, virtual-pointer tooltip
 positioning and screen-edge activation, hidden application title compatibility,
 waiting/failure states, values above
 100%, sampler failure, reduced motion, unchanged launcher membership/order,

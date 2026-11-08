@@ -53,7 +53,7 @@
     <value value='10' nick='ADAPTIVE'/>
   </enum>
   <enum id="org.gnome.shell.extensions.dash-to-dock.adaptive-cpu-idle">
-    <value value="0" nick="dot"/><value value="1" nick="line"/>
+    <value value="0" nick="dot"/><value value="1" nick="line"/><value value="2" nick="metro"/>
   </enum>
   <enum id="org.gnome.shell.extensions.dash-to-dock.adaptive-cpu-scale">
     <value value="0" nick="core"/><value value="1" nick="total"/>

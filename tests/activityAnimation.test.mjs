@@ -78,6 +78,7 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
         {}
     );
     const settings = {
+        get_enum: () => 10,
         get_int: key =>
             key === 'adaptive-cpu-hover-delay' ? 0 : key === 'adaptive-cpu-interval' ? 1 : animation,
         get_string: key => key === 'adaptive-cpu-scale' ? 'core' : 'dot',

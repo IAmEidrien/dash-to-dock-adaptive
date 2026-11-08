@@ -67,7 +67,7 @@ export default class Probe extends Extension {
         settings.set_int('dash-max-icon-size', 38);
         settings.set_boolean('show-favorites', false);
         settings.set_boolean('show-apps-at-top', true);
-        settings.set_int('adaptive-cpu-interval', 1);
+        settings.set_int('adaptive-cpu-interval', 5);
         settings.set_int('adaptive-cpu-animation', 300);
         settings.set_int('adaptive-cpu-hover-delay', 0);
         settings.set_enum('dock-position', Number(GLib.getenv('REVIEW_POSITION') ?? 2));
@@ -103,10 +103,21 @@ export default class Probe extends Extension {
             .getAppIcons()
             .map(i => i.app.get_id())
             .join();
+        const activatedAt = GLib.get_monotonic_time();
         settings.set_enum('running-indicator-style', 10);
         for (let i = 0; i < 60 && !(indicator()._cpu > 0); i++)
             await wait(100);
         check(indicator()._cpu > 0, 'real application CPU sample includes busy descendant');
+        check(
+            (GLib.get_monotonic_time() - activatedAt) / 1000 < 2500,
+            'fast first reading arrives before five-second polling interval'
+        );
+        check(
+            !manager.cpuActivity.bootstrap && !!manager.cpuActivity.timer,
+            'startup follow-up yields to normal polling'
+        );
+        settings.set_int('adaptive-cpu-interval', 1);
+        await wait(800);
         check(
             manager.cpuActivity.tokens.size >= 1 && !!manager.cpuActivity.timer,
             'shared sampler active'
@@ -145,12 +156,56 @@ export default class Probe extends Extension {
         settings.set_string('adaptive-cpu-idle', 'dot');
         await wait(450);
         check(indicator().fraction < 0.02, 'idle preference change renders dot');
-        settings.set_string('adaptive-cpu-idle', 'line');
+        settings.set_string('adaptive-cpu-idle', 'metro');
+        await wait(450);
+        check(
+            icon().has_style_class_name('activity-idle-metro'),
+            'idle Metro owns its flat launcher style'
+        );
+        const metroStream = Gio.File.new_for_path(`${root}/idle-metro.png`).replace(
+            null,
+            false,
+            Gio.FileCreateFlags.NONE,
+            null
+        );
+        await new Shell.Screenshot().screenshot(false, metroStream);
+        metroStream.close(null);
         settings.set_int('adaptive-cpu-hover-delay', 0);
+        check(
+            !icon().has_style_class_name('activity-idle-metro'),
+            'Activity mode relinquishes idle Metro styling'
+        );
+        settings.set_string('adaptive-cpu-idle', 'line');
         const area = indicator()._area;
         settings.set_enum('running-indicator-style', 5);
         await wait(400);
         check(indicator()._area === area, 'compatible line transition reuses drawing actor');
+        const context = () => ({
+            arcs: [],
+            rects: [],
+            offset: [0, 0],
+            arc(...args) {
+                this.arcs.push(args);
+            },
+            rectangle(...args) {
+                this.rects.push(args);
+            },
+            translate(x, y) {
+                this.offset = [x, y];
+            },
+            setLineWidth() {},
+            newSubPath() {},
+            closePath() {},
+            strokePreserve() {},
+            fill() {},
+            setSourceRGBA() {},
+            setSourceColor() {},
+        });
+        indicator()._computeStyle();
+        const solid = context();
+        indicator()._drawIndicator(solid);
+        const solidThickness = solid.rects[0][3],
+            solidTop = solid.offset[1];
         check(
             !manager.cpuActivity.timer && !manager.cpuActivity.process,
             'switching style stops sampling'
@@ -158,6 +213,16 @@ export default class Probe extends Extension {
         settings.set_enum('running-indicator-style', 10);
         await wait(1300);
         check(indicator()._area === area, 'return to Activity style reuses drawing actor');
+        indicator()._computeStyle();
+        const comparison = Object.create(indicator());
+        Object.assign(comparison, {fraction: 1, active: true, _cpu: 100, morph: false});
+        const capsule = context();
+        comparison._drawIndicator(capsule);
+        check(
+            capsule.arcs[0][2] * 2 === solidThickness &&
+                capsule.arcs[0][1] - capsule.arcs[0][2] === solidTop,
+            'Activity capsule matches actual Solid body height and edge padding at this scale'
+        );
         const generation = manager.cpuActivity.generation;
         const extraDock = manager._createDock({monitorIndex: 0, isMain: false});
         await wait(500);
@@ -230,11 +295,19 @@ export default class Probe extends Extension {
         await wait(100);
         check(indicator().label?.text === 'Waiting…', 'hover dwell shows waiting without app title');
         await wait(600);
+        check(indicator().active, 'Activity activation begins startup measurement pair');
+        const startupExit = [
+            Main.layoutManager.primaryMonitor.x + Main.layoutManager.primaryMonitor.width / 2,
+            Main.layoutManager.primaryMonitor.y + Main.layoutManager.primaryMonitor.height / 2,
+        ];
+        move(startupExit);
+        await wait(100);
         check(
-            indicator().active && indicator().label.text === 'Waiting…',
-            'first CPU snapshot remains a waiting state'
+            !manager.cpuActivity.bootstrap && !manager.cpuActivity.process && !manager.cpuActivity.timer,
+            'leaving during startup cancels follow-up and worker'
         );
-        await wait(1000);
+        move(point());
+        await wait(1400);
         check(
             mode().active && allActive(),
             'indicator dwell activates every running indicator in this dock'
@@ -394,6 +467,7 @@ export default class Probe extends Extension {
         await wait(200);
         check(
             !monitor.timer &&
+                !monitor.bootstrap &&
                 !monitor.process &&
                 monitor.tokens.size === 0 &&
                 !renderer.timeline &&

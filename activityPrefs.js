@@ -43,7 +43,12 @@ export function activityPreferences(settings, __) {
         add(title, control);
     };
     box.append(new Gtk.Label({label: __('CPU Activity mode — Experimental'), xalign: 0}));
-    combo('adaptive-cpu-idle', __('Idle appearance'), ['dot', 'line'], [__('Dot'), __('Line')]);
+    combo(
+        'adaptive-cpu-idle',
+        __('Idle appearance'),
+        ['dot', 'line', 'metro'],
+        [__('Dot'), __('Line'), __('Metro')]
+    );
     combo(
         'adaptive-cpu-scale',
         __('CPU scale'),

@@ -9,6 +9,14 @@ checkout without deleting that history or changing personal settings.
 
 ## Changes
 
+- Activity mode takes one extra startup sample **250 ms after its baseline reply**,
+  then resumes the saved polling interval. Startup timers and in-flight replies
+  are cancelled when the monitoring session ends.
+- The rounded Activity capsule now shares **Solid's thickness and edge padding**.
+  Idle **Line** uses Solid's renderer, and idle **Metro** adds the existing flat
+  launcher style and multi-window shading. Saved Dot/Line values are preserved.
+
+
 - The experimental indicator style is now **Activity (Experimental)**. Activity
   mode starts from any running indicator's CPU-tooltip region, then stays active
   for every running indicator in that dock until the pointer leaves the dock.

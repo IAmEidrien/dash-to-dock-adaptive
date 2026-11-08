@@ -133,6 +133,13 @@ export function smoothActivity(previous, target, elapsed, animation, interval) {
     return {value: previous + (target - previous) * alpha, deadband: 0.008 * strength ** 2};
 }
 
+// Share Solid's established body height and edge padding with the capsule.
+export function solidIndicatorGeometry(width, height, border, backlit, custom) {
+    const thickness = Math.max(width / 20, border);
+    const padding = backlit && !custom ? 0 : border;
+    return {thickness, y: height - padding - thickness};
+}
+
 // The drawing area, style computation, colors and rotation belong to Base.
 export function createActivityIndicator(Base, ordinary, utils) {
     return class ActivityIndicator extends Base {
@@ -312,9 +319,32 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 this.sampleState = 'waiting';
                 this.monitor.activate(this.token, this.active);
             }
+            this.syncIdleStyle();
             if (changed || force)
                 this._target();
             this._tooltip();
+        }
+
+        syncIdleStyle() {
+            const metro =
+                !this.dead &&
+                !this.retiring &&
+                this.style === ACTIVITY_STYLE &&
+                this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE &&
+                !this.active &&
+                this.settings.get_string('adaptive-cpu-idle') === 'metro';
+            if (metro) {
+                this._source.add_style_class_name('activity-idle-metro');
+                this.idleMetro = true;
+            } else {
+                this.clearIdleStyle();
+            }
+        }
+
+        clearIdleStyle() {
+            if (this.idleMetro)
+                this._source.remove_style_class_name('activity-idle-metro');
+            this.idleMetro = false;
         }
 
         _resetSmoothing() {
@@ -326,7 +356,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
         _target(newSample = false) {
             if (this.dead || this.style !== ACTIVITY_STYLE)
                 return;
-            let target = this.settings.get_string('adaptive-cpu-idle') === 'line' ? 1 : 0;
+            let target = this.settings.get_string('adaptive-cpu-idle') === 'dot' ? 0 : 1;
             if (this.active) {
                 target = this._cpu === null ? 0 : Math.min(1, this._cpu / 100);
                 if (this._cpu === null || !this.duration()) {
@@ -413,13 +443,26 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 (ordinary[this.style] ?? ordinary[9]).call(this, cr);
                 return;
             }
+            if (this.style === ACTIVITY_STYLE && !this.active && !this.morph) {
+                const idle = this.settings.get_string('adaptive-cpu-idle');
+                if (idle === 'line' || idle === 'metro') {
+                    ordinary[idle === 'metro' ? 7 : 5].call(this, cr);
+                    return;
+                }
+            }
             const border = this._borderWidth;
-            const thickness = Math.max(2 * this._radius, border + 1);
+            const {thickness, y: top} = solidIndicatorGeometry(
+                this._width,
+                this._height,
+                border,
+                this.settings.get_boolean('unity-backlit-items'),
+                this.settings.get_boolean('custom-theme-customize-running-dots')
+            );
             const length =
                 thickness + (Math.max(thickness, this._width - border) - thickness) * this.fraction;
             const radius = thickness / 2;
             const x = (this._width - length) / 2,
-                y = this._height - radius - border / 2;
+                y = top + radius;
             cr.setLineWidth(border);
             cr.newSubPath();
             cr.arc(x + radius, y, radius, Math.PI / 2, Math.PI * 1.5);
@@ -486,6 +529,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
             if (this.dead)
                 return;
             this.dead = true;
+            this.clearIdleStyle();
             this._signalsHandler.destroy();
             this.mode?.remove(this);
             this.mode = null;
