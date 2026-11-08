@@ -15,7 +15,8 @@ test('one async backend coalesces docks, cancels on inactivity and rejects stale
         callbacks = [],
         values = [];
     let serial = 0,
-        settingsCallback;
+        settingsCallback,
+        now = 100;
     const settings = {
         get_enum: () => 10,
         get_int: () => 2,
@@ -54,7 +55,7 @@ test('one async backend coalesces docks, cancels on inactivity and rejects stale
         PRIORITY_DEFAULT: 0,
         SOURCE_REMOVE: false,
         SOURCE_CONTINUE: true,
-        get_monotonic_time: () => 100000000,
+        get_monotonic_time: () => now * 1e6,
         timeout_add(_p, _delay, cb) {
             timers.set(++serial, cb);
             return serial;
@@ -84,7 +85,13 @@ test('one async backend coalesces docks, cancels on inactivity and rejects stale
         monitor.activate(third, true);
     });
     assert.equal(processes.length, 1);
-    callbacks[0](processes[0], {time: 100, cpus: 4, apps: {app: {percent: 250}}});
+    callbacks[0](processes[0], {time: 100, cpus: 4, apps: {app: {percent: null}}});
+    const bootstrap = monitor.bootstrap;
+    const followup = timers.get(bootstrap);
+    timers.delete(bootstrap);
+    now = 100.25;
+    followup();
+    callbacks.at(-1)(processes.at(-1), {time: now, cpus: 4, apps: {app: {percent: 250}}});
     assert.equal(values.at(-1).percent, 250);
     monitor.unwatch(third);
     settings.get_enum = () => 0;
@@ -204,4 +211,114 @@ test('startup follows a valid baseline once after 250 ms then resumes configured
     assert.equal(timers.get(monitor.timer).delay, 5000);
     monitor.destroy();
     assert.equal(timers.size, 0);
+});
+
+test('hiding one dock preserves another and resumed observers require a post-resume baseline', () => {
+    const timers = new Map(),
+        children = [],
+        values = {a: [], b: []};
+    let now = 100,
+        serial = 0;
+    const apps = ['a', 'b'].map((id, index) => ({get_id: () => id, get_pids: () => [123 + index]}));
+    const settings = {get_enum: () => 10, get_int: () => 5, connect: () => ++serial, disconnect() {}};
+    const schedule = (delay, cb) => {
+        timers.set(++serial, {delay, cb});
+        return serial;
+    };
+    const GLib = {
+        PRIORITY_DEFAULT: 0,
+        SOURCE_REMOVE: false,
+        SOURCE_CONTINUE: true,
+        get_monotonic_time: () => now * 1e6,
+        timeout_add: (_p, delay, cb) => schedule(delay, cb),
+        timeout_add_seconds: (_p, seconds, cb) => schedule(seconds * 1000, cb),
+        source_remove: id => timers.delete(id),
+    };
+    const Gio = {
+        SubprocessFlags: {STDIN_PIPE: 1, STDOUT_PIPE: 2, STDERR_SILENCE: 4},
+        Cancellable: class {
+            cancel() {}
+        },
+        Subprocess: {
+            new() {
+                const child = {
+                    force_exit() {
+                        this.killed = true;
+                    },
+                    communicate_utf8_async(input, _cancel, cb) {
+                        this.input = JSON.parse(input);
+                        this.cb = cb;
+                    },
+                    communicate_utf8_finish: result => [true, JSON.stringify(result)],
+                    get_successful: () => true,
+                };
+                children.push(child);
+                return child;
+            },
+        },
+    };
+    const Shell = {AppSystem: {get_default: () => ({get_running: () => apps})}};
+    const Monitor = vm.runInNewContext(`${code};CpuActivityMonitor`, {GLib, Gio, Shell});
+    const monitor = new Monitor(settings, '/extension');
+    const a = monitor.watch(apps[0], value => values.a.push(value));
+    const b = monitor.watch(apps[1], value => values.b.push(value));
+    const complete = (time, av, bv) => {
+        const child = children.at(-1);
+        child.cb(child, {time, cpus: 1, apps: {a: {percent: av}, b: {percent: bv}}});
+    };
+    const followup = () => {
+        const id = monitor.bootstrap;
+        const {cb} = timers.get(id);
+        timers.delete(id);
+        cb();
+    };
+    monitor.batch(() => {
+        monitor.activate(a, true);
+        monitor.activate(b, true);
+    });
+    complete(100, null, null);
+    now = 100.25;
+    followup();
+    complete(now, 40, 70);
+    assert.equal(values.a.at(-1).percent, 40);
+    assert.equal(values.b.at(-1).percent, 70);
+    const generation = monitor.generation,
+        periodic = monitor.timer;
+    monitor.activate(b, false);
+    assert.equal(monitor.generation, generation, 'unique app removal does not reset shared worker');
+    assert.equal(monitor.timer, periodic);
+    now = 100.5;
+    monitor.sample();
+    const inFlight = children.at(-1);
+    now = 100.6;
+    monitor.activate(b, true);
+    assert.ok(!inFlight.killed);
+    assert.equal(monitor.generation, generation);
+    now = 100.7;
+    complete(100.5, 45, 75);
+    assert.equal(values.a.at(-1).percent, 45);
+    assert.equal(values.b.at(-1), null, 'in-flight pre-resume window cannot drive resumed dock');
+    now = 100.95;
+    followup();
+    complete(now, 50, 80);
+    assert.equal(values.a.at(-1).percent, 50);
+    assert.equal(values.b.at(-1), null, 'first post-resume snapshot is the new baseline');
+    now = 101.2;
+    followup();
+    complete(now, 55, 90);
+    assert.equal(values.b.at(-1).percent, 90);
+    assert.equal(monitor.generation, generation);
+    assert.equal(monitor.timer, periodic, 'other dock keeps its periodic cadence');
+    assert.ok(!monitor.bootstrap);
+    monitor.activate(b, false);
+    now = 102;
+    monitor.activate(b, true);
+    complete(now, 60, 95);
+    assert.ok(monitor.bootstrap);
+    monitor.activate(b, false);
+    assert.ok(!monitor.bootstrap, 'unneeded observer-only follow-up is cancelled');
+    assert.equal(monitor.timer, periodic);
+    monitor.activate(a, false);
+    assert.equal(timers.size, 0);
+    monitor.destroy();
 });

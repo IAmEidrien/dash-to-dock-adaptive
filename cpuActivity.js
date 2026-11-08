@@ -33,6 +33,11 @@ export class CpuActivityMonitor {
         if (!this.tokens.has(token) || token.active === active)
             return;
         token.active = active;
+        token.awaitingFresh = active;
+        if (active) {
+            token.since = GLib.get_monotonic_time() / 1e6;
+            this.refreshRequested = true;
+        }
         this.sync();
     }
 
@@ -53,16 +58,20 @@ export class CpuActivityMonitor {
         const active =
             this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE &&
             [...this.tokens].some(t => t.active);
-        const signature = active
-            ? JSON.stringify([
-                [
-                    ...new Set([...this.tokens].filter(t => t.active).map(t => t.app.get_id())),
-                ].sort(),
-                this.settings.get_int('adaptive-cpu-interval'),
-            ])
-            : '';
-        if (this.signature === signature)
+        // App membership alone never resets another visible dock's worker.
+        const signature = active ? String(this.settings.get_int('adaptive-cpu-interval')) : '';
+        if (this.signature === signature) {
+            if (!this._needsFresh() && this.bootstrap && !this.startupPhase) {
+                GLib.source_remove(this.bootstrap);
+                this.bootstrap = 0;
+            }
+            if (this.refreshRequested) {
+                this.refreshRequested = false;
+                if (active && this._needsFresh() && !this.process && !this.bootstrap)
+                    this.sample();
+            }
             return;
+        }
         this.signature = signature;
         this.stop();
         if (!active)
@@ -71,29 +80,37 @@ export class CpuActivityMonitor {
         this.sample();
     }
 
+    _needsFresh() {
+        return [...this.tokens].some(token => token.active && token.awaitingFresh);
+    }
+
     _scheduleNext(snapshot) {
-        if (!this.startupPhase || this.destroyed)
+        if (this.destroyed || !this.signature)
             return;
-        if (this.startupPhase === 'baseline' && snapshot) {
-            this.startupPhase = 'followup';
-            // One short interval provides a valid delta without waiting for the
-            // user's steady-state polling interval. Only schedule after baseline.
+        // A newly visible dock can use the shared in-flight snapshot as its new
+        // baseline, then one short follow-up, without stopping ordinary polling.
+        if (snapshot && this._needsFresh() && !this.bootstrap) {
             this.bootstrap = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
                 this.bootstrap = 0;
                 this.sample();
                 return GLib.SOURCE_REMOVE;
             });
+        }
+        if (this.startupPhase === 'baseline' && snapshot) {
+            this.startupPhase = 'followup';
             return;
         }
         this.startupPhase = null;
-        this.timer = GLib.timeout_add_seconds(
-            GLib.PRIORITY_DEFAULT,
-            this.settings.get_int('adaptive-cpu-interval'),
-            () => {
-                this.sample();
-                return GLib.SOURCE_CONTINUE;
-            }
-        );
+        if (!this.timer) {
+            this.timer = GLib.timeout_add_seconds(
+                GLib.PRIORITY_DEFAULT,
+                this.settings.get_int('adaptive-cpu-interval'),
+                () => {
+                    this.sample();
+                    return GLib.SOURCE_CONTINUE;
+                }
+            );
+        }
     }
 
     stop() {
@@ -113,14 +130,26 @@ export class CpuActivityMonitor {
         this.process = null;
         this.cancel = null;
         this.previous = null;
+        this.refreshRequested = false;
+        for (const token of this.tokens)
+            token.awaitingFresh = token.active;
         if (this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE)
             this.deliver(null, 'waiting');
     }
 
-    deliver(snapshot, state = 'unavailable') {
+    deliver(snapshot, state = 'unavailable', windowStart) {
         for (const token of [...this.tokens]) {
-            if (token.active && this.tokens.has(token))
-                token.changed(snapshot?.apps?.[token.app.get_id()] ?? null, snapshot?.cpus ?? 1, state);
+            if (!token.active || !this.tokens.has(token))
+                continue;
+            // Only measurements whose baseline was taken after this observer
+            // activated may drive it; other visible observers keep their samples.
+            if (snapshot && !(windowStart >= token.since)) {
+                token.changed(null, snapshot.cpus ?? 1, 'waiting');
+                continue;
+            }
+            if (snapshot)
+                token.awaitingFresh = false;
+            token.changed(snapshot?.apps?.[token.app.get_id()] ?? null, snapshot?.cpus ?? 1, state);
         }
     }
 
@@ -147,6 +176,7 @@ export class CpuActivityMonitor {
         }
         const {generation} = this;
         const warmingUp = !this.previous;
+        const windowStart = this.previous?.time;
         try {
             this.cancel = new Gio.Cancellable();
             const process = Gio.Subprocess.new(
@@ -191,7 +221,11 @@ export class CpuActivityMonitor {
                     )
                         snapshot = null;
                     this.previous = snapshot;
-                    this.deliver(snapshot, snapshot && warmingUp ? 'waiting' : 'unavailable');
+                    this.deliver(
+                        snapshot,
+                        snapshot && warmingUp ? 'waiting' : 'unavailable',
+                        windowStart
+                    );
                     if (generation === this.generation)
                         this._scheduleNext(snapshot);
                 }

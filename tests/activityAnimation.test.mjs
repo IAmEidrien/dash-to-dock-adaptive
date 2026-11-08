@@ -97,6 +97,7 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
         app: {},
         running: true,
         hover: false,
+        get_parent: () => null,
         activityMode: {active: true, add() {}, remove() {}},
     };
     const indicator = new Indicator(source, 10, {_settings: settings, cpuActivity: monitor});
@@ -154,7 +155,25 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
     );
     animation = 300;
     indicator.animate(1);
+    const obsolete = indicator.timeline;
+    source.activityMode.visible = false;
+    source.activityMode.active = false;
+    indicator._monitoring();
+    assert.ok(obsolete.stopped && obsolete.callbacks.size === 0);
+    assert.equal(indicator.fraction, 0, 'hiding snaps to current idle appearance');
+    assert.equal(indicator._cpu, null);
+    assert.equal(indicator.filtered, undefined);
+    assert.equal(indicator.timeline, null);
+    indicator._monitoring(true);
+    assert.equal(indicator.timeline, null, 'configuration changes cannot animate hidden activity');
+    source.activityMode.visible = true;
+    source.activityMode.active = true;
+    indicator._monitoring();
+    assert.equal(indicator._cpu, null, 'resume does not restore an obsolete sample');
+    now += 1;
+    update({percent: 70}, 1);
     const pending = indicator.timeline;
+    assert.notEqual(pending, obsolete);
     indicator.destroy();
     assert.ok(removed && pending.stopped);
     assert.equal(pending.callbacks.size, 0);

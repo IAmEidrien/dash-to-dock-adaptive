@@ -326,6 +326,12 @@ const DockedDash = GObject.registerClass({
 
         // Connect global signals
         this._signalsHandler = new Utils.GlobalSignalsHandler(this);
+        const syncActivityVisibility = () =>
+            this.dash.activityMode.setVisible(this.mapped && this.dockState === State.SHOWN);
+        this._signalsHandler.add(
+            [this, 'notify::dock-state', syncActivityVisibility],
+            [this, 'notify::mapped', syncActivityVisibility]);
+        syncActivityVisibility();
         this._signalsHandler.add([
             // Monitor windows overlapping
             this._intellihide,

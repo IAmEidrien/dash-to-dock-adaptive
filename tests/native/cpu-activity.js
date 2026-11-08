@@ -77,7 +77,7 @@ export default class Probe extends Extension {
         await wait(1500);
         const manager = module.dockManager;
         const icon = () =>
-            manager.mainDock.dash
+            module.dockManager.mainDock.dash
                 .getAppIcons()
                 .find(i => i.app.get_id() === 'org.eidrien.D2DReviewSecond.desktop');
         const indicator = () => icon()._indicator._running;
@@ -201,7 +201,7 @@ export default class Probe extends Extension {
             setSourceRGBA() {},
             setSourceColor() {},
         });
-        indicator()._computeStyle();
+        check(indicator()._width > 0, 'Solid geometry comes from a real repaint');
         const solid = context();
         indicator()._drawIndicator(solid);
         const solidThickness = solid.rects[0][3],
@@ -213,7 +213,6 @@ export default class Probe extends Extension {
         settings.set_enum('running-indicator-style', 10);
         await wait(1300);
         check(indicator()._area === area, 'return to Activity style reuses drawing actor');
-        indicator()._computeStyle();
         const comparison = Object.create(indicator());
         Object.assign(comparison, {fraction: 1, active: true, _cpu: 100, morph: false});
         const capsule = context();
@@ -367,6 +366,10 @@ export default class Probe extends Extension {
         );
         move(point());
         await wait(1700);
+        const originalSample = manager.cpuActivity.sample;
+        manager.cpuActivity.sample = () => {};
+        while (manager.cpuActivity.process)
+            await wait(20);
         indicator()._resetSmoothing();
         indicator().token.changed({percent: 250}, 4);
         check(indicator().label.text.includes('62.5%'), 'total-capacity tooltip scales actual percent');
@@ -378,10 +381,6 @@ export default class Probe extends Extension {
             indicator().fraction > 0.98 && indicator().fraction <= 1,
             'visual activity reaches and clamps to full line'
         );
-        const originalSample = manager.cpuActivity.sample;
-        manager.cpuActivity.sample = () => {};
-        while (manager.cpuActivity.process)
-            await wait(20);
         settings.set_int('adaptive-cpu-animation', 0);
         indicator().token.changed({percent: 0}, 4);
         settings.set_int('adaptive-cpu-animation', 5000);
@@ -460,6 +459,17 @@ export default class Probe extends Extension {
                 .join() === roster,
             'CPU changes never alter launcher roster'
         );
+        const visibilityModule = await import(
+            Gio.File.new_for_path(`${info.path}/tests/native/activity-visibility.js`).get_uri()
+        );
+        await visibilityModule.validateVisibility({
+            manager,
+            settings,
+            check,
+            wait,
+            backend,
+            path: info.path,
+        });
         const monitor = manager.cpuActivity,
             renderer = indicator(),
             dockMode = mode();
@@ -481,7 +491,20 @@ export default class Probe extends Extension {
         settings.set_int('adaptive-cpu-hover-delay', 500);
         const pendingMode = module.dockManager.mainDock.dash.activityMode;
         pendingMode.updatePointer(true);
+        const freshIcon = icon();
+        const [fx, fy] = freshIcon._iconContainer.get_transformed_position();
+        const [fw, fh] = freshIcon._iconContainer.get_transformed_size();
+        move([fx + fw / 2, fy + fh / 2]);
+        await wait(30);
         pendingMode.updatePointer();
+        const freshSide = freshIcon._indicator._running._side;
+        const freshPoints = {
+            [St.Side.LEFT]: [fx + 2, fy + fh / 2],
+            [St.Side.RIGHT]: [fx + fw - 2, fy + fh / 2],
+            [St.Side.TOP]: [fx + fw / 2, fy + 2],
+            [St.Side.BOTTOM]: [fx + fw / 2, fy + fh - 2],
+        };
+        move(freshPoints[freshSide]);
         await wait(50);
         check(!!pendingMode.dwell, 're-enabled dock owns pending activation dwell');
         Main.extensionManager.disableExtension(uuid);

@@ -11,6 +11,8 @@ export class DockActivityMode {
         this.host = host;
         this.members = new Set();
         this.active = false;
+        this.visible = false;
+        this.needsRearm = true;
         this.ids = ['running-indicator-style', 'adaptive-cpu-hover-delay'].map(key =>
             settings.connect(`changed::${key}`, () => {
                 this._cancelDwell();
@@ -28,6 +30,31 @@ export class DockActivityMode {
         this.members.delete(indicator);
         if (!this.destroyed)
             this.updatePointer();
+    }
+
+    setVisible(visible) {
+        if (this.destroyed || this.visible === visible)
+            return;
+        this._cancelRevealCheck();
+        this.visible = visible;
+        this.needsRearm = true;
+        if (visible) {
+            // SHOWN can precede the final slide allocation. Check the fixed
+            // regions only after a painted frame, never against offscreen bounds.
+            this.revealPaintId = global.stage.connect('after-paint', () => {
+                this._cancelRevealCheck();
+                this.updatePointer();
+            });
+        }
+        this._cancelDwell();
+        this.active = false;
+        this.updatePointer();
+    }
+
+    _cancelRevealCheck() {
+        if (this.revealPaintId)
+            global.stage.disconnect(this.revealPaintId);
+        this.revealPaintId = 0;
     }
 
     _cancelDwell() {
@@ -49,7 +76,8 @@ export class DockActivityMode {
     updatePointer(clear = false) {
         if (this.destroyed)
             return;
-        const enabled = this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE;
+        const enabled =
+            this.visible && this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE;
         let trigger = false;
         for (const indicator of this.members) {
             indicator.edgeHover =
@@ -63,8 +91,12 @@ export class DockActivityMode {
             trigger ||= indicator.edgeHover;
         }
         const delay = this.settings.get_int('adaptive-cpu-hover-delay');
-        const inside = !clear && (trigger || this._insideDock());
-        if (!enabled || (delay > 0 && !inside)) {
+        // Hidden/sliding geometry cannot rearm a pointer-only reveal. Once shown,
+        // observing the pointer outside every fixed indicator strip is sufficient.
+        if (this.visible && !this.revealPaintId && !clear && !trigger)
+            this.needsRearm = false;
+        const inside = this.visible && !clear && (trigger || this._insideDock());
+        if (!enabled || (delay > 0 && (!inside || this.needsRearm))) {
             this._cancelDwell();
             this.active = false;
         } else if (delay === 0) {
@@ -86,6 +118,8 @@ export class DockActivityMode {
                             indicator._pointerOnIndicator()
                     );
                     this.active =
+                        this.visible &&
+                        !this.needsRearm &&
                         stillTriggered &&
                         this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE;
                     this._syncMembers();
@@ -111,8 +145,10 @@ export class DockActivityMode {
             return;
         this.destroyed = true;
         this.ids.forEach(id => this.settings.disconnect(id));
+        this._cancelRevealCheck();
         this._cancelDwell();
         this.active = false;
+        this.visible = false;
         this._syncMembers();
         this.members.clear();
         this.host = null;
@@ -308,7 +344,8 @@ export function createActivityIndicator(Base, ordinary, utils) {
             const wanted = !!(
                 this.style === ACTIVITY_STYLE &&
                 this._source.running &&
-                this.mode?.active
+                this.mode?.active &&
+                this.mode.visible !== false
             );
             const changed = wanted !== this.active;
             if (changed) {
@@ -320,7 +357,29 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 this.monitor.activate(this.token, this.active);
             }
             this.syncIdleStyle();
-            if (changed || force)
+            if (this.mode?.visible === false) {
+                // Snap to a clean idle state while offscreen, never retain or
+                // restart a timeline carrying measurements from before hiding.
+                if (!this.suspended || changed || force) {
+                    this.stopAnimation();
+                    this._resetSmoothing();
+                    this.rawPercent = null;
+                    this._cpu = null;
+                    this.sampleState = 'waiting';
+                    this.morph = false;
+                    this.fraction =
+                        this.style === ACTIVITY_STYLE
+                            ? Number(this.settings.get_string('adaptive-cpu-idle') !== 'dot')
+                            : this._ordinaryFraction(this.style);
+                    this._source.get_parent()?.label?.hide();
+                }
+                this.suspended = true;
+                this._hideTooltip(false);
+                return;
+            }
+            const resumed = this.suspended;
+            this.suspended = false;
+            if (changed || force || resumed)
                 this._target();
             this._tooltip();
         }
@@ -402,7 +461,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
         }
 
         animate(target, completed = () => {}) {
-            const duration = this._area.mapped ? this.duration() : 0;
+            const duration = this._area.mapped && this.mode?.visible !== false ? this.duration() : 0;
             if (this.timeline && this.animationTarget === target && this.animationDuration === duration)
                 return;
             this.stopAnimation();
@@ -477,6 +536,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
         _tooltip() {
             if (
                 this.dead ||
+                this.mode?.visible === false ||
                 this.style !== ACTIVITY_STYLE ||
                 !this._source.running ||
                 !this._source.mapped ||

@@ -9,6 +9,16 @@ checkout without deleting that history or changing personal settings.
 
 ## Changes
 
+- Hidden/sliding docks suspend Activity sampling and animation, clear old CPU
+  state and resume with fresh measurements. Other visible docks retain their
+  shared worker and polling cadence. Autohide and intellihide use the existing
+  dock-state/mapped lifecycle.
+- After revealing a dock, nonzero-delay Activity activation is disarmed until the
+  pointer leaves all indicator strips. An icon interior or ordinary dock control
+  can rearm it without leaving the dock. Zero-delay Activity remains active only
+  while shown. No new user-facing setting is introduced.
+
+
 - Activity mode takes one extra startup sample **250 ms after its baseline reply**,
   then resumes the saved polling interval. Startup timers and in-flight replies
   are cancelled when the monitoring session ends.

@@ -27,7 +27,19 @@ test('dock mode triggers only on an indicator, persists in its dock and cancels 
             signals.delete(id);
         },
     };
+    const paints = new Map();
+    const paint = () => [...paints.values()].forEach(callback => callback());
+    const stage = {
+        connect(_signal, callback) {
+            paints.set(++serial, callback);
+            return serial;
+        },
+        disconnect(id) {
+            paints.delete(id);
+        },
+    };
     const Mode = vm.runInNewContext(`${code};DockActivityMode`, {
+        global: {stage},
         ACTIVITY_STYLE: 10,
         GLib: {
             PRIORITY_DEFAULT: 0,
@@ -43,6 +55,8 @@ test('dock mode triggers only on an indicator, persists in its dock and cancels 
     });
     const mode = new Mode(settings, {});
     mode._insideDock = () => inside;
+    mode.setVisible(true);
+    paint();
     const make = () => ({
         style: 10,
         _source: {running: true, mapped: true, hover: true},
@@ -72,6 +86,8 @@ test('dock mode triggers only on an indicator, persists in its dock and cancels 
     assert.ok(mode.active && first.active && second.active);
     const otherDock = new Mode(settings, {});
     otherDock._insideDock = () => false;
+    otherDock.setVisible(true);
+    paint();
     const remote = make();
     remote._pointerOnIndicator = () => false;
     remote._monitoring = () => {
@@ -133,4 +149,115 @@ test('smoothing strengthens with duration, is time-aware and responds quickly to
     assert.equal(direct.value, 0.50001);
     assert.equal(direct.deadband, 0);
     assert.ok(long.deadband > short.deadband);
+});
+
+test('visibility suspends mode and rearming requires leaving every indicator strip, not the dock', () => {
+    const timers = new Map();
+    let serial = 0,
+        delay = 500,
+        inside = true;
+    const trigger = [true, false];
+    const settings = {
+        get_enum: () => 10,
+        get_int: () => delay,
+        connect: () => ++serial,
+        disconnect() {},
+    };
+    const paints = new Map();
+    const paint = () => [...paints.values()].forEach(callback => callback());
+    const stage = {
+        connect(_signal, callback) {
+            paints.set(++serial, callback);
+            return serial;
+        },
+        disconnect(id) {
+            paints.delete(id);
+        },
+    };
+    const Mode = vm.runInNewContext(`${code};DockActivityMode`, {
+        global: {stage},
+        ACTIVITY_STYLE: 10,
+        GLib: {
+            PRIORITY_DEFAULT: 0,
+            SOURCE_REMOVE: false,
+            timeout_add(_p, _delay, cb) {
+                timers.set(++serial, cb);
+                return serial;
+            },
+            source_remove(id) {
+                timers.delete(id);
+            },
+        },
+    });
+    const mode = new Mode(settings, {});
+    mode._insideDock = () => inside;
+    const members = trigger.map((_value, index) => ({
+        style: 10,
+        _source: {running: true, mapped: true},
+        monitor: {batch: cb => cb()},
+        _pointerOnIndicator: () => trigger[index],
+        _monitoring() {
+            this.active = mode.active;
+        },
+    }));
+    members.forEach(member => mode.add(member));
+    assert.ok(!mode.visible && !mode.active && !mode.dwell);
+    mode.setVisible(true);
+    trigger[0] = false;
+    mode.updatePointer();
+    assert.ok(mode.needsRearm, 'pre-paint offscreen bounds cannot rearm reveal');
+    trigger[0] = true;
+    paint();
+    assert.ok(mode.needsRearm && !mode.active && !mode.dwell, 'reveal motion does not start Activity');
+    trigger[0] = false;
+    trigger[1] = true;
+    mode.updatePointer();
+    assert.ok(mode.needsRearm && !mode.dwell, 'switching indicator strips cannot rearm');
+    mode.setVisible(false);
+    trigger[1] = false;
+    mode.updatePointer();
+    assert.ok(mode.needsRearm, 'invisible geometry cannot clear rearming');
+    trigger[0] = true;
+    mode.setVisible(true);
+    paint();
+    assert.ok(!mode.dwell);
+    trigger[0] = false;
+    mode.updatePointer();
+    assert.ok(!mode.needsRearm && !mode.active && inside, 'icon interior rearms without leaving dock');
+    trigger[0] = true;
+    mode.updatePointer();
+    assert.equal(timers.size, 1);
+    mode.setVisible(false);
+    assert.equal(timers.size, 0, 'hiding cancels pending dwell');
+    mode.setVisible(true);
+    paint();
+    assert.ok(mode.needsRearm && !mode.dwell);
+    trigger[0] = false;
+    mode.updatePointer();
+    trigger[0] = true;
+    mode.updatePointer();
+    const callback = timers.get(mode.dwell);
+    timers.delete(mode.dwell);
+    callback();
+    assert.ok(mode.active && members.every(member => member.active));
+    mode.setVisible(false);
+    assert.ok(!mode.active && members.every(member => !member.active));
+    delay = 0;
+    mode.setVisible(true);
+    paint();
+    assert.ok(mode.active, 'visible zero-delay mode bypasses rearming');
+    for (let i = 0; i < 5; i++) {
+        mode.setVisible(false);
+        assert.equal(mode.active, false);
+        mode.setVisible(true);
+        paint();
+        assert.equal(mode.active, true);
+    }
+    mode.setVisible(false);
+    mode.setVisible(true);
+    assert.equal(paints.size, 1);
+    mode.destroy();
+    assert.equal(timers.size, 0);
+    assert.equal(paints.size, 0);
+    assert.equal(mode.members.size, 0);
 });

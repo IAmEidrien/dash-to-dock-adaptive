@@ -28,8 +28,37 @@ orientation-aware strip, extending outward through padding toward the monitor
 edge. This geometry is unchanged. The numerical tooltip still belongs to the
 indicator under the pointer; Activity mode belongs to its dock instance. A second
 dock has an independent activation state while sharing the same sampling worker.
-A hover delay of `0` keeps Activity mode active without pointer interaction.
+A hover delay of `0` keeps Activity mode active without pointer interaction while
+the dock is visible.
 New running indicators join their dock's current state automatically.
+
+## Visibility and revealing the dock
+
+Activity mode is suspended when a dock begins hiding through autohide or
+intellihide, and stays suspended while it is hidden or sliding into view. It
+becomes eligible again when the existing dock state reaches **shown** and its
+actor is mapped. Hidden docks drop their sampler subscriptions, cancel pending
+activation, stop their Activity timelines, clear CPU/smoothing history and snap
+to the selected idle appearance. They do not resume a partially finished
+animation from before hiding.
+
+For nonzero hover delays, a reveal is **disarmed**: the pointer must first leave
+**all** running Activity indicator strips before a new strip entry can start the
+dwell. Moving from one strip to another does not rearm it. Moving into an icon's
+interior, another non-indicator dock control or dock padding is sufficient; the
+pointer need not leave the whole dock. Rearming waits for the revealed dock's
+first painted frame so a transient offscreen layout cannot bypass the guard.
+The fixed indicator strips and their extensions to the monitor edge are unchanged.
+A delay of `0` bypasses this guard whenever the dock is shown.
+
+Each dock suspends independently. The shared worker and ordinary polling cadence
+continue for other visible docks, including when they show different apps. A
+resumed observer accepts CPU deltas only when their baseline was recorded after
+its activation; a shared in-flight measurement from before that point cannot
+restore stale data. Fresh baseline/follow-up samples reuse the same asynchronous
+backend without resetting another visible dock's measurements. Hiding the last
+active dock cancels polling, startup follow-ups and the worker. Dock destruction
+also disconnects its visibility/frame callbacks and activation timer.
 
 ## Controls
 
@@ -40,7 +69,7 @@ their values.
 | --- | --- | --- |
 | Idle appearance | Dot | Dot, Line (Solid), or Metro outside Activity mode. During Activity mode, valid CPU activity always uses the dot-to-line scale. |
 | CPU scale | Per-core | 100% means one logical CPU's capacity. Multi-threaded apps can exceed 100%. |
-| Hover delay | 500 ms | Enter a running indicator's CPU-tooltip region for this long to start dock-wide Activity mode. Leave the dock to stop. `0` keeps Activity mode active. Range 0–5000 ms. |
+| Hover delay | 500 ms | Enter a running indicator's CPU-tooltip region for this long to start dock-wide Activity mode. Leave the dock to stop. `0` keeps Activity mode active while shown. Range 0–5000 ms. |
 | Polling interval | 2 seconds | Range 1–60 seconds. Startup takes an immediate baseline and one follow-up about 250 ms after the baseline reply, then resumes this normal interval. |
 | Animation duration | 1.0 second | Range 0–5 seconds in 0.1-second steps. `0` disables animation and visual smoothing. GNOME's reduced-motion setting also makes changes immediate. |
 
@@ -139,9 +168,10 @@ billing, benchmarking or precise system-load accounting.
 Enumeration is bounded to 16,384 process entries and 256 applications/roots per
 application, with a 700 ms scan/attribution budget and a 1.2-second subprocess
 deadline. Oversized, failed and stale replies fall back to ordinary indicators.
-Only Activity mode schedules samples. Leaving Activity mode, choosing
-another style, destroying the last interested dock or disabling the extension
-cancels owned sources and subprocesses. Renderer signals, tooltip actors and
+Only visible, active Activity observers schedule samples. Choosing another style,
+dropping the last active observer or disabling the extension cancels owned sources
+and subprocesses. Other visible observers keep their shared sampler when one dock
+suspends. Renderer signals, tooltip actors and
 animation callbacks are separately cleaned up. Dock reconstruction does not own
 or duplicate the backend.
 
@@ -189,7 +219,13 @@ adds native checks for dock-wide activation, indicator-only triggering, whole-do
 persistence, rapid entry/exit, five-second retargeting, smoothing and zero-duration
 precision, plus real GTK checks of the fractional-second control. Later checks
 cover the 250 ms startup pair, follow-up cancellation, normal sustained cadence,
-Metro state ownership and parity with the actual Solid renderer at both UI scales. Headless tests
+Metro state ownership and parity with the actual Solid renderer at both UI scales.
+Visibility regression checks exercise actual autohide, maximizing a real GTK
+window to trigger intellihide, interrupted reveal/hide cycles, reveal rearming
+within the dock, visible-only zero-delay mode, two actual dock instances sharing
+a worker, fresh post-resume baselines, reconstruction and teardown. Headless
+checks additionally cover unique app sets across docks, pre-resume in-flight
+replies, pre-paint reveal geometry and cancellation of the one-shot frame check. Headless tests
 also cover independent dock states and time-aware smoothing/deadband behavior.
 
 The native CPU probe covers a real GTK application's busy descendant, shared
