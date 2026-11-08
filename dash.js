@@ -1,5 +1,6 @@
 // -*- mode: js; js-indent-level: 4; indent-tabs-mode: nil -*-
 import {visibleApp} from './launcherVisibility.js';
+import {DockActivityMode} from './activityIndicator.js';
 
 import {
     Clutter,
@@ -164,6 +165,7 @@ export const DockDash = GObject.registerClass({
         this._shownInitially = false;
         this._initializeIconSize(this.iconSize);
         this._signalsHandler = new Utils.GlobalSignalsHandler(this);
+        this.activityMode = new DockActivityMode(Docking.DockManager.settings, this);
 
         this._separator = null;
 
@@ -371,7 +373,7 @@ export const DockDash = GObject.registerClass({
                     this._updateActivityHover();
                     this._updatePaddingHover(event);
                 } else if (event.type() === Clutter.EventType.LEAVE) {
-                    this._updateActivityHover(true);
+                    this._updateActivityHover();
                     this._clearPaddingHover();
                 }
                 return Clutter.EVENT_PROPAGATE;
@@ -387,10 +389,8 @@ export const DockDash = GObject.registerClass({
     }
 
     _updateActivityHover(clear = false) {
-        if (this._destroying || Docking.DockManager.settings.runningIndicatorStyle !== 10)
-            return;
-        for (const icon of this.getAppIcons())
-            icon._indicator?._running.updatePointer?.(clear || Main.overview._inWindowDrag);
+        if (!this._destroying)
+            this.activityMode.updatePointer(clear || Main.overview._inWindowDrag);
     }
 
     _clearPaddingHover() {
@@ -487,6 +487,7 @@ export const DockDash = GObject.registerClass({
         if (this._destroying)
             return;
         this._destroying = true;
+        this.activityMode.destroy();
         this._scrollView._d2dDestroying = true;
         this._signalsHandler.destroy();
         if (this._redisplayLater) {
@@ -814,6 +815,8 @@ export const DockDash = GObject.registerClass({
 
     _createAppItem(app) {
         const appIcon = new AppIcons.makeAppIcon(app, this._monitorIndex, this.iconAnimator);
+        appIcon.activityMode = this.activityMode;
+        appIcon._indicator?._running.setDockMode?.(this.activityMode);
 
         if (appIcon._draggable) {
             appIcon._draggable.connect('drag-begin', () => {

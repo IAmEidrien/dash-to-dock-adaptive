@@ -2370,7 +2370,7 @@
                                       <object class="GtkComboBoxText" id="running_indicators_combo">
                                         <property name="can_focus">0</property>
                                         <items>
-                                          <item id="10" translatable="yes">Adaptive (Experimental)</item>
+                                          <item id="10" translatable="yes">Activity (Experimental)</item>
                                           <item id="0" translatable="yes">Default</item>
                                           <item id="1" translatable="yes">Dots</item>
                                           <item id="2" translatable="yes">Squares</item>

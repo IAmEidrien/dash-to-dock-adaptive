@@ -53,17 +53,36 @@ app.connect('activate', () => {
         const combo = byId('running_indicators_combo');
         check(
             combo.get_model().get_value(combo.get_model().get_iter_first()[1], 0) ===
-                'Adaptive (Experimental)',
-            'Adaptive is first indicator option'
+                'Activity (Experimental)',
+            'Activity is first indicator option'
         );
         const activityTitle = widgets.find(
-            w => w instanceof Gtk.Label && w.label === 'Adaptive CPU activity — Experimental'
+            w => w instanceof Gtk.Label && w.label === 'CPU Activity mode — Experimental'
         );
         settings.set_enum('running-indicator-style', 0);
         check(!activityTitle.get_parent().visible, 'CPU options hidden for ordinary style');
         settings.set_enum('running-indicator-style', 10);
-        check(activityTitle.get_parent().visible, 'CPU options shown for Adaptive');
+        check(activityTitle.get_parent().visible, 'CPU options shown for Activity mode');
+        settings.reset('adaptive-cpu-animation');
+        check(settings.get_int('adaptive-cpu-animation') === 1000, 'animation default is one second');
+        const animationRow = widgets
+            .find(w => w instanceof Gtk.Label && w.label === 'Animation duration (seconds)')
+            .get_parent();
+        const animation = animationRow.get_last_child();
+        check(
+            animation.digits === 1 && animation.adjustment.upper === 5,
+            'fractional seconds through five seconds'
+        );
+        animation.value = 4.7;
+        check(
+            settings.get_int('adaptive-cpu-animation') === 4700,
+            'seconds control preserves millisecond storage'
+        );
         settings.set_int('adaptive-cpu-animation', 700);
+        check(
+            Math.abs(animation.value - 0.7) < 0.001,
+            'stored milliseconds display as fractional seconds'
+        );
         settings.set_enum('running-indicator-style', 2);
         settings.set_enum('running-indicator-style', 10);
         check(settings.get_int('adaptive-cpu-animation') === 700, 'style changes preserve CPU settings');
@@ -138,6 +157,7 @@ app.connect('activate', () => {
             if (w instanceof Gtk.Dialog)
                 w.response(Gtk.ResponseType.CLOSE);
         }
+
         byId('running_indicators_advance_settings_button').emit('clicked');
         await wait(100);
         settings.set_boolean('custom-theme-customize-running-dots', true);
@@ -154,6 +174,7 @@ app.connect('activate', () => {
             if (w instanceof Gtk.Dialog)
                 w.response(Gtk.ResponseType.CLOSE);
         }
+
         settings.set_enum('transparency-mode', 3);
         byId('dynamic_opacity_button').emit('clicked');
         await wait(100);
@@ -171,6 +192,7 @@ app.connect('activate', () => {
             if (w instanceof Gtk.Dialog)
                 w.response(Gtk.ResponseType.CLOSE);
         }
+
         app.hold();
         window.close();
         await wait(100);

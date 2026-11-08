@@ -73,11 +73,16 @@ test('one async backend coalesces docks, cancels on inactivity and rejects stale
     const first = monitor.watch(app, sample => values.push(sample));
     const second = monitor.watch(app, sample => values.push(sample));
     assert.equal(processes.length, 0);
-    monitor.activate(first, true);
-    monitor.activate(second, true);
+    const third = monitor.watch({get_id: () => 'other', get_pids: () => [456]}, () => {});
+    monitor.batch(() => {
+        monitor.activate(first, true);
+        monitor.activate(second, true);
+        monitor.activate(third, true);
+    });
     assert.equal(processes.length, 1);
     callbacks[0](processes[0], {time: 100, cpus: 4, apps: {app: {percent: 250}}});
     assert.equal(values.at(-1).percent, 250);
+    monitor.unwatch(third);
     settings.get_enum = () => 0;
     settingsCallback();
     assert.equal(timers.size, 0);

@@ -9,6 +9,18 @@ checkout without deleting that history or changing personal settings.
 
 ## Changes
 
+- The experimental indicator style is now **Activity (Experimental)**. Activity
+  mode starts from any running indicator's CPU-tooltip region, then stays active
+  for every running indicator in that dock until the pointer leaves the dock.
+  Ordinary icon hover does not start it. Each dock has its own dwell and state;
+  the existing asynchronous sampler remains shared.
+- Animation duration now defaults to **1.0 second**, with **0–5 seconds** adjustable
+  in **0.1-second** steps. Existing millisecond keys and saved values are retained.
+  Lightweight time-aware visual smoothing and a small deadband reduce jitter;
+  larger increases remain responsive. Zero duration disables both, and numerical
+  tooltips always retain unsmoothed CPU measurements.
+
+
 - Adaptive 11 follow-up fixes frozen CPU/idle geometry with animations enabled
   by attaching its timeline to the drawing actor's frame clock. Indicator hover
   extends toward the monitor edge. **Hide application tooltip** suppresses the
@@ -16,7 +28,7 @@ checkout without deleting that history or changing personal settings.
   Dwell and initial sampling show **Waiting…**, distinct from actual failure.
 
 
-- **Adaptive 11** adds **Adaptive (Experimental)** as the first running-indicator
+- **Adaptive 11** adds **Activity (Experimental)** as the first running-indicator
   style, with dot-to-line CPU activity, shared asynchronous sampling, numeric
   indicator tooltips and conditional preferences. Existing indicator styles and
   saved settings remain available. See [ADAPTIVE-CPU.md](ADAPTIVE-CPU.md) for the

@@ -9,9 +9,10 @@ current build is **v110 — Adaptive 11**, based on tag `extensions.gnome.org-v1
 
 ## Adaptive features
 
-- **Adaptive CPU indicators (Experimental)** morph a running app's indicator
-  from a dot to a line as its estimated CPU use increases. Hover activates
-  monitoring by default; an always-active option is available.
+- **Activity indicators (Experimental)** morph a running app's indicator
+  from a dot to a line as its estimated CPU use increases. Enter an indicator's hover region to activate Activity mode for its dock;
+  monitoring persists until the pointer leaves the dock. An always-active option
+  and visual smoothing are available.
   See [ADAPTIVE-CPU.md](ADAPTIVE-CPU.md) for scales, dependencies, limitations
   and validation.
 - Preferences hide dependent controls when they are irrelevant, retaining their

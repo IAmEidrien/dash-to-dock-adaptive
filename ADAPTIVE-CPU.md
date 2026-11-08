@@ -1,7 +1,8 @@
-# Adaptive CPU activity indicators — Experimental
+# CPU Activity indicators — Experimental
 
-Select **Adaptive (Experimental)** at the top of **Customize window counter
-indicators**. No extra enable switch is needed. Other styles retain their saved
+Select **Activity (Experimental)** at the top of **Customize window counter
+indicators**. No extra enable switch is needed. Existing saved style values (including the
+`ADAPTIVE` enum nick) and all GSettings keys are retained. Other styles retain their saved
 configuration. This feature measures activity; it never changes which launchers
 exist, their order, or their click, hover-navigation and drag behavior.
 
@@ -11,18 +12,37 @@ indicator. Dominant application colors, custom indicator colors/borders,
 thickness and dock-edge positioning remain available. A valid zero is distinct
 from an unavailable measurement: failure or warm-up uses an ordinary running dot.
 
+## Activity mode
+
+With a nonzero hover delay, enter the existing narrow CPU-tooltip region beside
+any **running** indicator to start one dock-owned dwell timer. Ordinary launcher
+hover does not start Activity mode. When the delay expires, every running
+indicator in that dock measures CPU together. Activity mode stays active while
+the pointer is anywhere in the dock or its extended indicator hover strips,
+including icon interiors, other launchers, controls and padding. Leaving that
+effective region ends Activity mode and returns to the selected idle appearance.
+Entering and leaving an indicator before the delay expires cancels activation.
+
+The trigger and numerical tooltip use the same fixed-width, scale-aware,
+orientation-aware strip, extending outward through padding toward the monitor
+edge. This geometry is unchanged. The numerical tooltip still belongs to the
+indicator under the pointer; Activity mode belongs to its dock instance. A second
+dock has an independent activation state while sharing the same sampling worker.
+A hover delay of `0` keeps Activity mode active without pointer interaction.
+New running indicators join their dock's current state automatically.
+
 ## Controls
 
-These controls appear only while Adaptive is selected. Switching styles retains
+These controls appear only while Activity is selected. Switching styles retains
 their values.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| Idle appearance | Dot | Dot or Line while hover monitoring is inactive. During monitoring, valid CPU activity always uses the dot-to-line scale. |
+| Idle appearance | Dot | Dot or Line outside Activity mode. During Activity mode, valid CPU activity always uses the dot-to-line scale. |
 | CPU scale | Per-core | 100% means one logical CPU's capacity. Multi-threaded apps can exceed 100%. |
-| Hover delay | 500 ms | Hover over a launcher for this long to start sampling it. Leaving suspends it. `0` monitors running launchers continuously. Range 0–5000 ms. |
+| Hover delay | 500 ms | Enter a running indicator's CPU-tooltip region for this long to start dock-wide Activity mode. Leave the dock to stop. `0` keeps Activity mode active. Range 0–5000 ms. |
 | Polling interval | 2 seconds | Range 1–60 seconds. A new monitoring session needs two snapshots before a CPU value is available. |
-| Animation duration | 300 ms | Range 0–1000 ms. GNOME's disabled/reduced animation setting makes changes immediate. |
+| Animation duration | 1.0 second | Range 0–5 seconds in 0.1-second steps. `0` disables animation and visual smoothing. GNOME's reduced-motion setting also makes changes immediate. |
 
 **Total system capacity** divides the per-core measurement by the number of
 online logical CPUs reported by the operating system. For example, an app using
@@ -48,6 +68,27 @@ crossfade where drawing areas are available. The default theme indicator uses an
 immediate compatible fallback. New samples animate from the currently displayed
 length, so a new target does not restart from zero.
 
+## Visual smoothing
+
+Only the indicator's normalized length is smoothed. Numerical tooltips always
+use the latest raw measurement in the selected CPU scale, including values above
+100%; attribution and the sampling worker are unchanged.
+
+A time-aware moving average reduces small variations. Its strength increases
+with animation duration relative to the polling interval. Larger increases get a
+fast response, while decreases settle more gradually. A small visual deadband
+suppresses changes below about 0.6% of the full scale at the strongest supported
+setting; accumulated changes can still cross that threshold. No extra settings
+are needed. At short animation durations the effect is minimal. At zero duration,
+smoothing and the deadband are entirely bypassed, even for very small changes.
+
+Animations retarget from the currently displayed length, including when they
+last longer than the polling interval. Unchanged targets continue their existing
+timeline rather than restarting. Idle/unknown states and changes of CPU scale
+reset smoothing history. Existing saved animation durations remain in integer
+milliseconds under the same GSettings key; only the UI uses seconds. The new
+one-second default applies where that key has not been explicitly set.
+
 ## Measurement and limitations
 
 Python 3 is required for monitoring. One asynchronous, unprivileged worker is
@@ -68,7 +109,7 @@ billing, benchmarking or precise system-load accounting.
 Enumeration is bounded to 16,384 process entries and 256 applications/roots per
 application, with a 700 ms scan/attribution budget and a 1.2-second subprocess
 deadline. Oversized, failed and stale replies fall back to ordinary indicators.
-Only active Adaptive monitoring schedules samples. Leaving hover mode, choosing
+Only Activity mode schedules samples. Leaving Activity mode, choosing
 another style, destroying the last interested dock or disabling the extension
 cancels owned sources and subprocesses. Renderer signals, tooltip actors and
 animation callbacks are separately cleaned up. Dock reconstruction does not own
@@ -113,7 +154,11 @@ animations explicitly enabled and the supplied GNOME 46 theme loaded. Timelines
 now belong to the drawing actor, detach on cancellation, and skip animation while
 the actor is unmapped. The harness forces compositor animations on and asserts
 that GNOME reports them enabled before checking actual frame-driven progress;
-it still verifies the user's reduced-motion setting separately.
+it still verifies the user's reduced-motion setting separately. The refinement
+adds native checks for dock-wide activation, indicator-only triggering, whole-dock
+persistence, rapid entry/exit, five-second retargeting, smoothing and zero-duration
+precision, plus real GTK checks of the fractional-second control. Headless tests
+also cover independent dock states and time-aware smoothing/deadband behavior.
 
 The native CPU probe covers a real GTK application's busy descendant, shared
 sampling across two actual dock actors on one monitor, style transitions and

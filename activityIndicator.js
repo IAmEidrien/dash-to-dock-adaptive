@@ -2,7 +2,136 @@
 // SPDX-License-Identifier: MIT
 import {Clutter, GLib, St} from './dependencies/gi.js';
 import {Main} from './dependencies/shell/ui.js';
-import {ADAPTIVE_STYLE} from './cpuActivity.js';
+import {ACTIVITY_STYLE} from './cpuActivity.js';
+
+// Each dash owns one hover dwell and mode; the sampler remains manager-owned.
+export class DockActivityMode {
+    constructor(settings, host) {
+        this.settings = settings;
+        this.host = host;
+        this.members = new Set();
+        this.active = false;
+        this.ids = ['running-indicator-style', 'adaptive-cpu-hover-delay'].map(key =>
+            settings.connect(`changed::${key}`, () => {
+                this._cancelDwell();
+                this.updatePointer();
+            })
+        );
+    }
+
+    add(indicator) {
+        this.members.add(indicator);
+        this.updatePointer();
+    }
+
+    remove(indicator) {
+        this.members.delete(indicator);
+        if (!this.destroyed)
+            this.updatePointer();
+    }
+
+    _cancelDwell() {
+        if (this.dwell)
+            GLib.source_remove(this.dwell);
+        this.dwell = 0;
+    }
+
+    _insideDock() {
+        const actor = this.host._dashContainer;
+        if (!actor?.mapped)
+            return false;
+        const [x, y] = actor.get_transformed_position();
+        const [width, height] = actor.get_transformed_size();
+        const [px, py] = global.get_pointer();
+        return px >= x && px < x + width && py >= y && py < y + height;
+    }
+
+    updatePointer(clear = false) {
+        if (this.destroyed)
+            return;
+        const enabled = this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE;
+        let trigger = false;
+        for (const indicator of this.members) {
+            indicator.edgeHover =
+                !clear &&
+                enabled &&
+                !indicator.dead &&
+                indicator.style === ACTIVITY_STYLE &&
+                indicator._source.running &&
+                indicator._source.mapped &&
+                indicator._pointerOnIndicator();
+            trigger ||= indicator.edgeHover;
+        }
+        const delay = this.settings.get_int('adaptive-cpu-hover-delay');
+        const inside = !clear && (trigger || this._insideDock());
+        if (!enabled || (delay > 0 && !inside)) {
+            this._cancelDwell();
+            this.active = false;
+        } else if (delay === 0) {
+            this._cancelDwell();
+            this.active = true;
+        } else if (!this.active) {
+            if (!trigger) {
+                this._cancelDwell();
+            } else if (!this.dwell) {
+                this.dwell = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+                    this.dwell = 0;
+                    // Recheck actual geometry: actors may have moved during dwell.
+                    const stillTriggered = [...this.members].some(
+                        indicator =>
+                            !indicator.dead &&
+                            indicator.style === ACTIVITY_STYLE &&
+                            indicator._source.running &&
+                            indicator._source.mapped &&
+                            indicator._pointerOnIndicator()
+                    );
+                    this.active =
+                        stillTriggered &&
+                        this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE;
+                    this._syncMembers();
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+        }
+        this._syncMembers();
+    }
+
+    _syncMembers() {
+        const sync = () => {
+            for (const indicator of this.members)
+                indicator._monitoring();
+        };
+        const monitor = this.members.values().next().value?.monitor;
+        if (monitor)
+            monitor.batch(sync);
+    }
+
+    destroy() {
+        if (this.destroyed)
+            return;
+        this.destroyed = true;
+        this.ids.forEach(id => this.settings.disconnect(id));
+        this._cancelDwell();
+        this.active = false;
+        this._syncMembers();
+        this.members.clear();
+        this.host = null;
+    }
+}
+
+// Time-aware asymmetric EMA. Inputs/outputs are normalized visual lengths only.
+export function smoothActivity(previous, target, elapsed, animation, interval) {
+    if (!animation || previous === undefined)
+        return {value: target, deadband: 0};
+    const seconds = animation / 1000;
+    const strength = seconds / (seconds + Math.max(0.001, interval));
+    const rising = target > previous;
+    const tau = seconds * strength * (rising ? 0.2 : 0.65);
+    let alpha = 1 - Math.exp(-Math.max(0, elapsed) / Math.max(0.001, tau));
+    if (target - previous >= 0.15)
+        alpha = Math.max(alpha, 0.85);
+    return {value: previous + (target - previous) * alpha, deadband: 0.008 * strength ** 2};
+}
 
 // The drawing area, style computation, colors and rotation belong to Base.
 export function createActivityIndicator(Base, ordinary, utils) {
@@ -19,12 +148,11 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 this.sampleCpus = cpus;
                 this.sampleState = state ?? 'unavailable';
                 this._scaleSample();
-                this._target();
+                this._target(true);
                 this._tooltip();
             });
-            this._signalsHandler.add(source, 'notify::hover', () => this._monitoring());
-            this._signalsHandler.add(source, 'notify::mapped', () => this._monitoring());
-            this._signalsHandler.add(source, 'notify::running', () => this._monitoring());
+            for (const signal of ['notify::hover', 'notify::mapped', 'notify::running'])
+                this._signalsHandler.add(source, signal, () => this.mode?.updatePointer());
             this._signalsHandler.add(source, 'motion-event', () => {
                 this._tooltip();
                 return Clutter.EVENT_PROPAGATE;
@@ -41,8 +169,10 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 'adaptive-cpu-animation',
             ]) {
                 this._signalsHandler.add(this.settings, `changed::${key}`, () => {
+                    if (key === 'adaptive-cpu-scale')
+                        this._resetSmoothing();
                     this._scaleSample();
-                    this._monitoring();
+                    this._monitoring(true);
                 });
             }
             this._signalsHandler.add(St.Settings.get(), 'notify::enable-animations', () => {
@@ -54,6 +184,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 }
             });
             this.setStyle(style);
+            this.setDockMode(source.activityMode ?? null);
         }
 
         _scaleSample() {
@@ -81,19 +212,13 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 this._source.get_parent()?.showLabel?.();
         }
 
-        // The dock forwards motion without consuming it. Extend only the indicator
-        // strip toward the monitor edge, keeping the launcher's along-axis bounds.
-        updatePointer(clear = false) {
-            const before = this.edgeHover;
-            this.edgeHover =
-                !clear &&
-                this.style === ADAPTIVE_STYLE &&
-                this._source.mapped &&
-                this._pointerOnIndicator();
-            if (before !== this.edgeHover)
-                this._monitoring();
-            else
-                this._tooltip();
+        setDockMode(mode) {
+            if (this.mode === mode)
+                return;
+            this.mode?.remove(this);
+            this.mode = mode;
+            this.mode?.add(this);
+            this._monitoring();
         }
 
         _pointerOnIndicator() {
@@ -143,17 +268,17 @@ export function createActivityIndicator(Base, ordinary, utils) {
         }
 
         setStyle(style) {
-            const wasAdaptive = this.style === ADAPTIVE_STYLE;
+            const wasActivity = this.style === ACTIVITY_STYLE;
             const previous = this.style;
             this.style = style;
-            if (style !== ADAPTIVE_STYLE)
+            if (style !== ACTIVITY_STYLE)
                 this.edgeHover = false;
-            if (style === ADAPTIVE_STYLE && previous !== undefined && previous !== ADAPTIVE_STYLE)
+            if (style === ACTIVITY_STYLE && previous !== undefined && previous !== ACTIVITY_STYLE)
                 this.fraction = this._ordinaryFraction(previous);
-            if (style === ADAPTIVE_STYLE && previous !== ADAPTIVE_STYLE)
+            if (style === ACTIVITY_STYLE && previous !== ACTIVITY_STYLE)
                 this.morph = true;
-            this._monitoring();
-            if (wasAdaptive && style !== ADAPTIVE_STYLE) {
+            this._monitoring(true);
+            if (wasActivity && style !== ACTIVITY_STYLE) {
                 this.morph = true;
                 this.animate(this._ordinaryFraction(style), () => {
                     this.morph = false;
@@ -170,55 +295,64 @@ export function createActivityIndicator(Base, ordinary, utils) {
             return 0;
         }
 
-        _monitoring() {
+        _monitoring(force = false) {
             if (this.dead)
                 return;
-            if (this.dwell)
-                GLib.source_remove(this.dwell);
-            this.dwell = 0;
-            const adaptive = this.style === ADAPTIVE_STYLE && this._source.running;
-            const delay = this.settings.get_int('adaptive-cpu-hover-delay');
-            const wanted =
-                adaptive &&
-                (delay === 0 || (this._source.mapped && (this._source.hover || this.edgeHover)));
-            if (!wanted) {
-                this.monitor.activate(this.token, false);
-                this.active = false;
+            const wanted = !!(
+                this.style === ACTIVITY_STYLE &&
+                this._source.running &&
+                this.mode?.active
+            );
+            const changed = wanted !== this.active;
+            if (changed) {
+                this.active = !!wanted;
+                this._resetSmoothing();
                 this._cpu = null;
                 this.rawPercent = null;
-                this._hideTooltip();
-                this._target();
-                return;
-            }
-            if (this.active) {
-                this._target();
-                this._tooltip();
-                return;
-            }
-            const activate = () => {
-                this.dwell = 0;
-                if (this.dead)
-                    return GLib.SOURCE_REMOVE;
-                this.active = true;
                 this.sampleState = 'waiting';
-                this.monitor.activate(this.token, true);
+                this.monitor.activate(this.token, this.active);
+            }
+            if (changed || force)
                 this._target();
-                this._tooltip();
-                return GLib.SOURCE_REMOVE;
-            };
-            if (delay === 0)
-                activate();
-            else
-                this.dwell = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, activate);
             this._tooltip();
         }
 
-        _target() {
-            if (this.dead || this.style !== ADAPTIVE_STYLE)
+        _resetSmoothing() {
+            this.filtered = undefined;
+            this.visualTarget = undefined;
+            this.sampleTime = undefined;
+        }
+
+        _target(newSample = false) {
+            if (this.dead || this.style !== ACTIVITY_STYLE)
                 return;
             let target = this.settings.get_string('adaptive-cpu-idle') === 'line' ? 1 : 0;
-            if (this.active)
+            if (this.active) {
                 target = this._cpu === null ? 0 : Math.min(1, this._cpu / 100);
+                if (this._cpu === null || !this.duration()) {
+                    this._resetSmoothing();
+                } else if (newSample) {
+                    const now = GLib.get_monotonic_time() / 1e6;
+                    const interval = this.settings.get_int('adaptive-cpu-interval');
+                    const elapsed = this.sampleTime === undefined ? interval : now - this.sampleTime;
+                    const smoothed = smoothActivity(
+                        this.filtered,
+                        target,
+                        elapsed,
+                        this.duration(),
+                        interval
+                    );
+                    this.filtered = smoothed.value;
+                    this.sampleTime = now;
+                    if (
+                        this.visualTarget === undefined ||
+                        Math.abs(smoothed.value - this.visualTarget) >= smoothed.deadband
+                    )
+                        this.visualTarget = smoothed.value;
+                }
+                if (this.duration() && this.visualTarget !== undefined)
+                    target = this.visualTarget;
+            }
             if (this._cpu === null && this.fraction > 0)
                 this.morph = true;
             this.animate(target, () => {
@@ -238,9 +372,13 @@ export function createActivityIndicator(Base, ordinary, utils) {
         }
 
         animate(target, completed = () => {}) {
-            this.stopAnimation();
-            const from = this.fraction;
             const duration = this._area.mapped ? this.duration() : 0;
+            if (this.timeline && this.animationTarget === target && this.animationDuration === duration)
+                return;
+            this.stopAnimation();
+            this.animationTarget = target;
+            this.animationDuration = duration;
+            const from = this.fraction;
             if (!duration || Math.abs(target - from) < 0.001) {
                 this.fraction = target;
                 this._area.queue_repaint();
@@ -269,8 +407,8 @@ export function createActivityIndicator(Base, ordinary, utils) {
             if (!this._source.running)
                 return;
             if (
-                (!this.morph && this.style !== ADAPTIVE_STYLE) ||
-                (this.style === ADAPTIVE_STYLE && this.active && this._cpu === null && !this.morph)
+                (!this.morph && this.style !== ACTIVITY_STYLE) ||
+                (this.style === ACTIVITY_STYLE && this.active && this._cpu === null && !this.morph)
             ) {
                 (ordinary[this.style] ?? ordinary[9]).call(this, cr);
                 return;
@@ -296,7 +434,7 @@ export function createActivityIndicator(Base, ordinary, utils) {
         _tooltip() {
             if (
                 this.dead ||
-                this.style !== ADAPTIVE_STYLE ||
+                this.style !== ACTIVITY_STYLE ||
                 !this._source.running ||
                 !this._source.mapped ||
                 !(this._source.hover || this.edgeHover) ||
@@ -349,9 +487,8 @@ export function createActivityIndicator(Base, ordinary, utils) {
                 return;
             this.dead = true;
             this._signalsHandler.destroy();
-            if (this.dwell)
-                GLib.source_remove(this.dwell);
-            this.dwell = 0;
+            this.mode?.remove(this);
+            this.mode = null;
             this.stopAnimation();
             this.monitor.unwatch(this.token);
             this._hideTooltip(false);

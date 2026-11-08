@@ -4,13 +4,12 @@ import {
     GdkPixbuf,
     Gio,
     GObject,
-    GLib,
     Pango,
     St,
 } from './dependencies/gi.js';
 
 import {createActivityIndicator} from './activityIndicator.js';
-import {ADAPTIVE_STYLE} from './cpuActivity.js';
+import {ACTIVITY_STYLE} from './cpuActivity.js';
 
 import {Main} from './dependencies/shell/ui.js';
 
@@ -35,7 +34,7 @@ const RunningIndicatorStyle = Object.freeze({
     METRO: 7,
     BINARY: 8,
     DOT: 9,
-    ADAPTIVE: ADAPTIVE_STYLE,
+    ACTIVITY: ACTIVITY_STYLE,
 });
 
 const MAX_WINDOWS_CLASSES = 4;
@@ -68,7 +67,7 @@ export class AppIconIndicator {
         let runningIndicatorStyle;
 
         const {settings} = Docking.DockManager;
-        if (settings.applyCustomTheme && settings.runningIndicatorStyle !== ADAPTIVE_STYLE)
+        if (settings.applyCustomTheme && settings.runningIndicatorStyle !== ACTIVITY_STYLE)
             runningIndicatorStyle = RunningIndicatorStyle.DOTS;
         else
             ({runningIndicatorStyle} = settings);
@@ -79,12 +78,12 @@ export class AppIconIndicator {
             this._indicators.push(unityIndicator);
         }
 
-        const compatible = [1, 3, 5, 9, ADAPTIVE_STYLE].includes(runningIndicatorStyle);
+        const compatible = [1, 3, 5, 9, ACTIVITY_STYLE].includes(runningIndicatorStyle);
         if (compatible) {
             const changingMultiShape = old?.style !== runningIndicatorStyle &&
                 [old?.style, runningIndicatorStyle].some(style => [1, 3].includes(style)) && old?._number > 1;
-            const canReuse = old instanceof RunningIndicatorAdaptive && !changingMultiShape;
-            runningIndicator = canReuse ? old : new RunningIndicatorAdaptive(source, runningIndicatorStyle,
+            const canReuse = old instanceof RunningIndicatorActivity && !changingMultiShape;
+            runningIndicator = canReuse ? old : new RunningIndicatorActivity(source, runningIndicatorStyle,
                 Docking.DockManager.getDefault());
             runningIndicator.setStyle(runningIndicatorStyle);
         } else {
@@ -135,16 +134,14 @@ export class AppIconIndicator {
         }
 
         if (old && old !== runningIndicator) {
+            old.setDockMode?.(null);
             const duration = St.Settings.get().enable_animations
                 ? settings.get_int('adaptive-cpu-animation') : 0;
-            if ((this._style === ADAPTIVE_STYLE || runningIndicatorStyle === ADAPTIVE_STYLE) &&
+            if ((this._style === ACTIVITY_STYLE || runningIndicatorStyle === ACTIVITY_STYLE) &&
                 old._area && runningIndicator._area && duration) {
                 old._signalsHandler.destroy();
                 old.monitor?.activate(old.token, false);
                 old.stopAnimation?.();
-                if (old.dwell)
-                    GLib.source_remove(old.dwell);
-                old.dwell = 0;
                 old._hideTooltip?.();
                 this._outgoing.add(old);
                 old._area.ease({
@@ -430,7 +427,7 @@ class RunningIndicatorDots extends RunningIndicatorBase {
         this._bodyColor = themeNode.get_background_color();
 
         const {settings} = Docking.DockManager;
-        if (!settings.applyCustomTheme || settings.runningIndicatorStyle === ADAPTIVE_STYLE) {
+        if (!settings.applyCustomTheme || settings.runningIndicatorStyle === ACTIVITY_STYLE) {
             // Adjust for the backlit case
             const Color = Clutter.Color ?? Cogl.Color;
 
@@ -785,7 +782,7 @@ class RunningIndicatorDot extends RunningIndicatorDots {
     }
 }
 
-const RunningIndicatorAdaptive = createActivityIndicator(RunningIndicatorDots, {
+const RunningIndicatorActivity = createActivityIndicator(RunningIndicatorDots, {
     1: RunningIndicatorDots.prototype._drawIndicator,
     3: RunningIndicatorDashes.prototype._drawIndicator,
     5: RunningIndicatorSolid.prototype._drawIndicator,

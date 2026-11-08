@@ -45,7 +45,10 @@ export default class Probe extends Extension {
         St.ThemeContext.get_for_stage(global.stage).scale_factor = Number(
             GLib.getenv('REVIEW_SCALE') ?? 1
         );
-        new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_boolean('enable-animations', true);
+        new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).set_boolean(
+            'enable-animations',
+            true
+        );
         const themeFile = Gio.File.new_for_path(`${root}/review-theme.css`);
         if (themeFile.query_exists(null))
             St.ThemeContext.get_for_stage(global.stage).get_theme().load_stylesheet(themeFile);
@@ -65,9 +68,11 @@ export default class Probe extends Extension {
         settings.set_boolean('show-favorites', false);
         settings.set_boolean('show-apps-at-top', true);
         settings.set_int('adaptive-cpu-interval', 1);
+        settings.set_int('adaptive-cpu-animation', 300);
         settings.set_int('adaptive-cpu-hover-delay', 0);
         settings.set_enum('dock-position', Number(GLib.getenv('REVIEW_POSITION') ?? 2));
         await wait(400);
+        Gio.Subprocess.new(['gjs', '-m', `${root}/client.js`, 'org.eidrien.D2DReviewFirst'], 0);
         Gio.Subprocess.new(['gjs', '-m', `${root}/client.js`, 'org.eidrien.D2DReviewSecond'], 0);
         await wait(1500);
         const manager = module.dockManager;
@@ -76,10 +81,24 @@ export default class Probe extends Extension {
                 .getAppIcons()
                 .find(i => i.app.get_id() === 'org.eidrien.D2DReviewSecond.desktop');
         const indicator = () => icon()._indicator._running;
+        const mode = () => manager.mainDock.dash.activityMode;
+        const allActive = () =>
+            manager.mainDock.dash
+                .getAppIcons()
+                .filter(i => i.running)
+                .every(i => i._indicator._running.active);
         // Software-rendered nested shells may take longer to map the GTK client.
-        for (let i = 0; i < 100 && !icon(); i++)
+        for (
+            let i = 0;
+            i < 100 &&
+            (!icon() || manager.mainDock.dash.getAppIcons().filter(a => a.running).length !== 2);
+            i++
+        )
             await wait(100);
-        check(!!icon(), 'real launcher present');
+        check(
+            !!icon() && manager.mainDock.dash.getAppIcons().filter(i => i.running).length === 2,
+            'two real running launchers present'
+        );
         const roster = manager.mainDock.dash
             .getAppIcons()
             .map(i => i.app.get_id())
@@ -92,19 +111,25 @@ export default class Probe extends Extension {
             manager.cpuActivity.tokens.size >= 1 && !!manager.cpuActivity.timer,
             'shared sampler active'
         );
+        indicator()._resetSmoothing();
         indicator().token.changed({percent: 80}, 4);
-        check(indicator().timeline?.get_actor() === indicator()._area, 'animation owns the drawing actor frame clock');
+        check(
+            indicator().timeline?.get_actor() === indicator()._area,
+            'animation owns the drawing actor frame clock'
+        );
         await wait(450);
         check(
             Math.abs(indicator().fraction - 0.8) < 0.02,
             'animation advances real rendered CPU geometry'
         );
-        print(`RENDER ${JSON.stringify({
-            fraction: indicator().fraction,
-            width: indicator()._width,
-            height: indicator()._height,
-            scale: St.ThemeContext.get_for_stage(global.stage).scale_factor,
-        })}`);
+        print(
+            `RENDER ${JSON.stringify({
+                fraction: indicator().fraction,
+                width: indicator()._width,
+                height: indicator()._height,
+                scale: St.ThemeContext.get_for_stage(global.stage).scale_factor,
+            })}`
+        );
         const debugStream = Gio.File.new_for_path(`${root}/initial-indicator.png`).replace(
             null,
             false,
@@ -116,7 +141,7 @@ export default class Probe extends Extension {
         settings.set_int('adaptive-cpu-hover-delay', 500);
         settings.set_string('adaptive-cpu-idle', 'line');
         await wait(450);
-        check(indicator().fraction > 0.98, 'inactive hover monitoring renders idle line');
+        check(indicator().fraction > 0.98, 'inactive Activity mode renders idle line');
         settings.set_string('adaptive-cpu-idle', 'dot');
         await wait(450);
         check(indicator().fraction < 0.02, 'idle preference change renders dot');
@@ -132,7 +157,7 @@ export default class Probe extends Extension {
         );
         settings.set_enum('running-indicator-style', 10);
         await wait(1300);
-        check(indicator()._area === area, 'return to Adaptive reuses drawing actor');
+        check(indicator()._area === area, 'return to Activity style reuses drawing actor');
         const generation = manager.cpuActivity.generation;
         const extraDock = manager._createDock({monitorIndex: 0, isMain: false});
         await wait(500);
@@ -160,7 +185,7 @@ export default class Probe extends Extension {
         icon().set_hover(false);
         indicator()._monitoring();
         await wait(100);
-        check(!manager.cpuActivity.timer, 'hover mode suspends sampling when inactive');
+        check(!manager.cpuActivity.timer, 'inactive Activity mode suspends sampling');
         for (let i = 0; i < 5; i++) {
             icon().set_hover(true);
             indicator()._monitoring();
@@ -170,7 +195,7 @@ export default class Probe extends Extension {
         }
         await wait(200);
         check(
-            !manager.cpuActivity.timer && !indicator().dwell,
+            !manager.cpuActivity.timer && !mode().dwell,
             'rapid hover leaves no sampling or dwell timer'
         );
         const backend = Clutter.get_default_backend()
@@ -195,13 +220,25 @@ export default class Probe extends Extension {
         const move = coords => backend.notify_absolute_motion(GLib.get_monotonic_time(), ...coords);
         settings.set_boolean('hide-tooltip', true);
         settings.set_int('adaptive-cpu-hover-delay', 500);
+        move([x + width / 2, y + height / 2]);
+        await wait(650);
+        check(
+            !mode().active && !mode().dwell && !manager.cpuActivity.timer,
+            'ordinary launcher hover cannot activate Activity mode'
+        );
         move(point());
         await wait(100);
         check(indicator().label?.text === 'Waiting…', 'hover dwell shows waiting without app title');
         await wait(600);
-        check(indicator().active && indicator().label.text === 'Waiting…', 'first CPU snapshot remains a waiting state');
+        check(
+            indicator().active && indicator().label.text === 'Waiting…',
+            'first CPU snapshot remains a waiting state'
+        );
         await wait(1000);
-        check(indicator().active, 'real pointer activates monitoring after dwell');
+        check(
+            mode().active && allActive(),
+            'indicator dwell activates every running indicator in this dock'
+        );
         check(indicator().label?.visible, 'indicator hover shows tooltip beside launcher');
         check(
             !indicator().label.text.includes(icon().app.get_name()),
@@ -213,6 +250,20 @@ export default class Probe extends Extension {
             !indicator().label.visible && !icon().get_parent().label.visible,
             'return to icon respects hide application tooltip'
         );
+        check(mode().active && allActive(), 'Activity mode persists over ordinary launcher area');
+        const applications = manager.mainDock.dash._showAppsIcon;
+        const [ax, ay] = applications.get_transformed_position();
+        const [aw, ah] = applications.get_transformed_size();
+        move([ax + aw / 2, ay + ah / 2]);
+        await wait(50);
+        check(mode().active && allActive(), 'Activity mode persists over Show Applications control');
+        const container = manager.mainDock.dash._dashContainer;
+        const [cx, cy] = container.get_transformed_position();
+        move([cx + 1, cy + 1]);
+        await wait(50);
+        check(mode().active && allActive(), 'Activity mode persists over dock padding');
+        move([x + width / 2, y + height / 2]);
+        await wait(50);
         icon().get_parent().showLabel();
         check(!icon().get_parent().label.visible, 'delayed ordinary label cannot bypass hide setting');
         move(point(true));
@@ -221,8 +272,29 @@ export default class Probe extends Extension {
             indicator().active && indicator().label.visible,
             'screen edge behind indicator remains hover target'
         );
-        move(point());
+        const outside = [
+            Main.layoutManager.primaryMonitor.x + Main.layoutManager.primaryMonitor.width / 2,
+            Main.layoutManager.primaryMonitor.y + Main.layoutManager.primaryMonitor.height / 2,
+        ];
+        move(outside);
         await wait(100);
+        check(
+            !mode().active && !manager.cpuActivity.timer,
+            'leaving effective dock region stops dock-wide monitoring'
+        );
+        for (let i = 0; i < 4; i++) {
+            move(point());
+            await wait(20);
+            move(outside);
+            await wait(20);
+        }
+        check(
+            !mode().active && !mode().dwell && !manager.cpuActivity.timer,
+            'rapid indicator entry cancels shared dwell cleanly'
+        );
+        move(point());
+        await wait(1700);
+        indicator()._resetSmoothing();
         indicator().token.changed({percent: 250}, 4);
         check(indicator().label.text.includes('62.5%'), 'total-capacity tooltip scales actual percent');
         settings.set_string('adaptive-cpu-scale', 'core');
@@ -233,6 +305,41 @@ export default class Probe extends Extension {
             indicator().fraction > 0.98 && indicator().fraction <= 1,
             'visual activity reaches and clamps to full line'
         );
+        const originalSample = manager.cpuActivity.sample;
+        manager.cpuActivity.sample = () => {};
+        while (manager.cpuActivity.process)
+            await wait(20);
+        settings.set_int('adaptive-cpu-animation', 0);
+        indicator().token.changed({percent: 0}, 4);
+        settings.set_int('adaptive-cpu-animation', 5000);
+        indicator().token.changed({percent: 40}, 4);
+        await wait(220);
+        const displayed = indicator().fraction;
+        check(displayed > 0 && displayed < 0.4, 'five-second animation advances on real frame clock');
+        indicator().token.changed({percent: 45}, 4);
+        check(
+            Math.abs(indicator().fraction - displayed) < 0.00001,
+            'long animation retargets without visual jump'
+        );
+        check(
+            indicator().visualTarget < 0.45 && indicator()._cpu === 45,
+            'smoothing changes geometry only'
+        );
+        await wait(220);
+        check(
+            indicator().fraction > displayed,
+            'retargeted animation keeps moving between faster samples'
+        );
+        indicator().token.changed({percent: 95}, 4);
+        check(indicator().visualTarget > 0.85, 'large increase remains promptly visible');
+        settings.set_int('adaptive-cpu-animation', 0);
+        indicator().token.changed({percent: 37.123}, 4);
+        check(
+            Math.abs(indicator().fraction - 0.37123) < 1e-8,
+            'zero duration bypasses smoothing and deadband'
+        );
+        settings.set_int('adaptive-cpu-animation', 300);
+        manager.cpuActivity.sample = originalSample;
         settings.set_boolean('hide-tooltip', false);
         check(
             indicator().label.text.includes(icon().app.get_name()),
@@ -254,7 +361,10 @@ export default class Probe extends Extension {
         manager.cpuActivity.sample();
         await wait(1300);
         check(indicator()._cpu === null, 'failed worker falls back to ordinary indicator');
-        check(indicator().label.text.includes('unavailable'), 'failed worker remains distinguishable from waiting');
+        check(
+            indicator().label.text.includes('unavailable'),
+            'failed worker remains distinguishable from waiting'
+        );
         manager.cpuActivity.path = originalPath;
         await wait(1800);
         settings.set_enum('running-indicator-style', 2);
@@ -278,7 +388,8 @@ export default class Probe extends Extension {
             'CPU changes never alter launcher roster'
         );
         const monitor = manager.cpuActivity,
-            renderer = indicator();
+            renderer = indicator(),
+            dockMode = mode();
         Main.extensionManager.disableExtension(uuid);
         await wait(200);
         check(
@@ -286,13 +397,25 @@ export default class Probe extends Extension {
                 !monitor.process &&
                 monitor.tokens.size === 0 &&
                 !renderer.timeline &&
-                !renderer.dwell,
+                !dockMode.dwell &&
+                dockMode.members.size === 0,
             'disable clears worker, subscriptions, animation and hover'
         );
         Main.extensionManager.enableExtension(uuid);
         await wait(1300);
         check(module.dockManager.cpuActivity !== monitor, 're-enable creates fresh shared backend');
+        settings.set_int('adaptive-cpu-hover-delay', 500);
+        const pendingMode = module.dockManager.mainDock.dash.activityMode;
+        pendingMode.updatePointer(true);
+        pendingMode.updatePointer();
+        await wait(50);
+        check(!!pendingMode.dwell, 're-enabled dock owns pending activation dwell');
         Main.extensionManager.disableExtension(uuid);
+        await wait(50);
+        check(
+            !pendingMode.dwell && pendingMode.members.size === 0,
+            'disable cancels pending dock activation'
+        );
         const file = Gio.File.new_for_path(`${info.path}/tests/native/cpu-prefs.js`);
         Gio.Subprocess.new(['gjs', '-m', file.get_path(), info.path, root], Gio.SubprocessFlags.NONE);
         for (

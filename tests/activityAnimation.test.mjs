@@ -10,6 +10,8 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
         removed = false,
         fallback = 0;
     const motion = {enable_animations: true};
+    let now = 1,
+        animation = 300;
     class Timeline {
         constructor({actor}) {
             assert.ok(actor, 'timeline needs the real drawing actor for its frame clock');
@@ -54,8 +56,8 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
     const factory = vm.runInNewContext(`${code};createActivityIndicator`, {
         Clutter: {Timeline},
         St: {Settings: {get: () => motion}},
-        GLib: {SOURCE_REMOVE: false},
-        ADAPTIVE_STYLE: 10,
+        GLib: {SOURCE_REMOVE: false, get_monotonic_time: () => now * 1e6},
+        ACTIVITY_STYLE: 10,
     });
     class Base {
         constructor(source) {
@@ -76,7 +78,8 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
         {}
     );
     const settings = {
-        get_int: key => key === 'adaptive-cpu-hover-delay' ? 0 : 300,
+        get_int: key =>
+            key === 'adaptive-cpu-hover-delay' ? 0 : key === 'adaptive-cpu-interval' ? 1 : animation,
         get_string: key => key === 'adaptive-cpu-scale' ? 'core' : 'dot',
     };
     const monitor = {
@@ -89,7 +92,12 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
             removed = true;
         },
     };
-    const source = {app: {}, running: true, hover: false};
+    const source = {
+        app: {},
+        running: true,
+        hover: false,
+        activityMode: {active: true, add() {}, remove() {}},
+    };
     const indicator = new Indicator(source, 10, {_settings: settings, cpuActivity: monitor});
     update({percent: 50}, 1);
     const first = indicator.timeline;
@@ -107,7 +115,7 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
     second.progress = 1;
     second.fire('new-frame');
     second.fire('completed');
-    assert.equal(indicator.fraction, 1);
+    assert.ok(indicator.fraction > 0.9 && indicator.fraction <= 1);
     update(null, 1);
     const missing = indicator.timeline;
     missing.progress = 1;
@@ -125,6 +133,25 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
     assert.equal(indicator.fraction, 0.5);
     assert.equal(indicator.timeline, null, 'unstaged actors never start a timeline');
     indicator._area.mapped = true;
+    animation = 5000;
+    indicator._resetSmoothing();
+    now = 10;
+    update({percent: 50}, 1);
+    const stable = indicator.visualTarget;
+    now = 11;
+    update({percent: 50.1}, 1);
+    assert.equal(indicator.visualTarget, stable, 'small visual changes stay inside deadband');
+    assert.equal(indicator._cpu, 50.1, 'raw numerical measurement remains unchanged');
+    now = 12;
+    update({percent: 90}, 1);
+    assert.ok(indicator.visualTarget > 0.83, 'significant rise breaks visual deadband promptly');
+    animation = 0;
+    update({percent: 60.0001}, 1);
+    assert.ok(
+        Math.abs(indicator.fraction - 0.600001) < 1e-10,
+        'zero bypasses every smoothing threshold'
+    );
+    animation = 300;
     indicator.animate(1);
     const pending = indicator.timeline;
     indicator.destroy();
@@ -132,11 +159,13 @@ test('CPU morphs retarget from displayed width and clean up timeline callbacks',
     assert.equal(pending.callbacks.size, 0);
 });
 
-
 test('indicator hover extends only its strip to each monitor edge at both UI scales', () => {
     const code = readFileSync(new URL('../activityIndicator.js', import.meta.url), 'utf8')
-        .replace(/^import .*;\n/gm, '').replace(/export /g, '');
-    let pointer = [0, 0], scale = 1, box = [30, 100, 80, 80];
+        .replace(/^import .*;\n/gm, '')
+        .replace(/export /g, '');
+    let pointer = [0, 0],
+        scale = 1,
+        box = [30, 100, 80, 80];
     const monitor = {x: 0, y: 0, width: 500, height: 400};
     const Side = {TOP: 0, RIGHT: 1, BOTTOM: 2, LEFT: 3};
     const factory = vm.runInNewContext(`${code};createActivityIndicator`, {

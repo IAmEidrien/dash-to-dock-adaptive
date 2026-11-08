@@ -23,7 +23,7 @@ export function activityPreferences(settings, __) {
         ids.push(settings.connect(`changed::${key}`, sync));
         if (key === 'adaptive-cpu-idle') {
             control.tooltip_text = __(
-                'Baseline before hover monitoring. Active CPU uses the dot-to-line scale.'
+                'Baseline outside Activity mode. Active CPU uses the dot-to-line scale.'
             );
         }
         add(title, control);
@@ -42,7 +42,7 @@ export function activityPreferences(settings, __) {
         settings.bind(key, control, 'value', 0);
         add(title, control);
     };
-    box.append(new Gtk.Label({label: __('Adaptive CPU activity — Experimental'), xalign: 0}));
+    box.append(new Gtk.Label({label: __('CPU Activity mode — Experimental'), xalign: 0}));
     combo('adaptive-cpu-idle', __('Idle appearance'), ['dot', 'line'], [__('Dot'), __('Line')]);
     combo(
         'adaptive-cpu-scale',
@@ -52,7 +52,23 @@ export function activityPreferences(settings, __) {
     );
     spin('adaptive-cpu-hover-delay', __('Hover delay (ms; 0 = always active)'), 0, 5000, 50);
     spin('adaptive-cpu-interval', __('Polling interval (seconds)'), 1, 60, 1);
-    spin('adaptive-cpu-animation', __('Animation duration (ms)'), 0, 1000, 50);
+    // Keep the saved integer milliseconds; present fractional seconds in the UI.
+    const animation = new Gtk.SpinButton({
+        numeric: true,
+        digits: 1,
+        adjustment: new Gtk.Adjustment({lower: 0, upper: 5, step_increment: 0.1, page_increment: 0.5}),
+    });
+    const syncAnimation = () => {
+        animation.value = settings.get_int('adaptive-cpu-animation') / 1000;
+    };
+    syncAnimation();
+    animation.connect('value-changed', () => {
+        const milliseconds = Math.round(animation.value * 1000);
+        if (milliseconds !== settings.get_int('adaptive-cpu-animation'))
+            settings.set_int('adaptive-cpu-animation', milliseconds);
+    });
+    ids.push(settings.connect('changed::adaptive-cpu-animation', syncAnimation));
+    add(__('Animation duration (seconds)'), animation);
     box.append(
         new Gtk.Label({
             label: __('Per-core: 100% = one CPU. Total: 100% = all CPUs. Process-tree estimates.'),

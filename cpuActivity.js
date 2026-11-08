@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import {Gio, GLib, Shell} from './dependencies/gi.js';
 
-export const ADAPTIVE_STYLE = 10;
+export const ACTIVITY_STYLE = 10;
 
 // A single sampler belongs to DockManager, never to individual docks/icons.
 export class CpuActivityMonitor {
@@ -36,11 +36,22 @@ export class CpuActivityMonitor {
         this.sync();
     }
 
+    // A dock activates its indicators as one transaction, avoiding worker churn.
+    batch(callback) {
+        this.batchDepth = (this.batchDepth ?? 0) + 1;
+        try {
+            callback();
+        } finally {
+            this.batchDepth--;
+            this.sync();
+        }
+    }
+
     sync() {
-        if (this.destroyed)
+        if (this.destroyed || this.batchDepth)
             return;
         const active =
-            this.settings.get_enum('running-indicator-style') === ADAPTIVE_STYLE &&
+            this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE &&
             [...this.tokens].some(t => t.active);
         const signature = active
             ? JSON.stringify([
@@ -80,7 +91,7 @@ export class CpuActivityMonitor {
         this.process = null;
         this.cancel = null;
         this.previous = null;
-        if (this.settings.get_enum('running-indicator-style') === ADAPTIVE_STYLE)
+        if (this.settings.get_enum('running-indicator-style') === ACTIVITY_STYLE)
             this.deliver(null, 'waiting');
     }
 
@@ -95,7 +106,7 @@ export class CpuActivityMonitor {
         if (
             this.process ||
             this.destroyed ||
-            this.settings.get_enum('running-indicator-style') !== ADAPTIVE_STYLE ||
+            this.settings.get_enum('running-indicator-style') !== ACTIVITY_STYLE ||
             ![...this.tokens].some(t => t.active)
         )
             return;
