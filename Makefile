@@ -4,8 +4,10 @@ UUID = dash-to-dock-adaptive@eidrien.local
 BASE_MODULES = extension.js \
                metadata.json \
                COPYING \
+               LICENSING.md \
                README.md \
                ADAPTIVE-BUILD.md \
+               ADAPTIVE-CPU.md \
                $(NULL)
 
 EXTRA_MODULES = \
@@ -18,6 +20,11 @@ EXTRA_MODULES = \
                 appIcons.js \
                 appIconsDecorator.js \
                 appIconIndicators.js \
+                cpuActivity.js \
+                activityIndicator.js \
+                activityPrefs.js \
+                conditionalPrefs.js \
+                cpu_activity.py \
                 dockStruts.js \
                 fileManager1API.js \
                 imports.js \
@@ -142,7 +149,7 @@ _build: all
 	-rm -fR ./_build
 	mkdir -p _build
 	cp $(BASE_MODULES) $(EXTRA_MODULES) _build
-	cp -a dependencies _build
+	cp -a dependencies LICENSES _build
 	cp stylesheet.css _build
 	mkdir -p _build/media
 	cd media ; cp $(EXTRA_MEDIA) ../_build/media/
@@ -171,3 +178,4 @@ check: test
 .PHONY: test check refresh-runtime
 test:
 	node --test tests/*.test.mjs
+	python3 -m unittest discover -s tests -p "*_test.py"

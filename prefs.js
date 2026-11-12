@@ -6,6 +6,8 @@ import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
+import {conditionalPreferences} from './conditionalPrefs.js';
+import {activityPreferences} from './activityPrefs.js';
 import {showVisibilityPreferences} from './visibilityPrefs.js';
 
 import {
@@ -217,6 +219,19 @@ const DockSettings = GObject.registerClass({
     }
 
     _onWindowsClosed() {
+        if (this._themeControlsSignal)
+            this._settings.disconnect(this._themeControlsSignal);
+        this._themeControlsSignal = 0;
+        this._conditionalPreferences?.destroy();
+        this._conditionalPreferences = null;
+        this._activityPreferences?.destroy();
+        this._activityPreferences = null;
+        if (this._opacityControlsSignal)
+            this._settings.disconnect(this._opacityControlsSignal);
+        this._opacityControlsSignal = 0;
+        if (this._scrollDelayVisibilitySignal)
+            this._settings.disconnect(this._scrollDelayVisibilitySignal);
+        this._scrollDelayVisibilitySignal = 0;
         if (this._dock_size_timeout) {
             GLib.source_remove(this._dock_size_timeout);
             delete this._dock_size_timeout;
@@ -875,13 +890,15 @@ const DockSettings = GObject.registerClass({
             'value',
             Gio.SettingsBindFlags.DEFAULT);
 
-        const updateWorkspaceScrollDelaySensitivity = () => {
-            this._builder.get_object('workspace_scroll_delay_spinbutton').sensitive =
-                this._settings.get_enum('scroll-action') === 2;
+        const updateScrollDelayVisibility = () => {
+            const visible = this._settings.get_enum('scroll-action') !== 0;
+            for (const id of ['workspace_scroll_delay_spinbutton', 'workspace_scroll_delay_label',
+                'workspace_scroll_delay_description'])
+                this._builder.get_object(id).visible = visible;
         };
-        updateWorkspaceScrollDelaySensitivity();
-        this._settings.connect('changed::scroll-action',
-            updateWorkspaceScrollDelaySensitivity);
+        updateScrollDelayVisibility();
+        this._scrollDelayVisibilitySignal = this._settings.connect('changed::scroll-action',
+            updateScrollDelayVisibility);
 
         this._builder.get_object('shift_click_action_combo').connect('changed', widget => {
             if (widget.get_active() >= 0)
@@ -1006,10 +1023,14 @@ const DockSettings = GObject.registerClass({
 
         // Appearance Panel
 
-        this._settings.bind('apply-custom-theme',
-            this._builder.get_object('customize_theme'),
-            'sensitive',
-            Gio.SettingsBindFlags.INVERT_BOOLEAN | Gio.SettingsBindFlags.GET);
+        const syncThemeControls = () => {
+            const list = this._builder.get_object('customize_theme');
+            const runningRow = this._builder.get_object('listboxrow3');
+            for (let row = list.get_first_child(); row; row = row.get_next_sibling())
+                row.visible = row === runningRow || !this._settings.get_boolean('apply-custom-theme');
+        };
+        syncThemeControls();
+        this._themeControlsSignal = this._settings.connect('changed::apply-custom-theme', syncThemeControls);
         this._settings.bind('apply-custom-theme',
             this._builder.get_object('builtin_theme_switch'),
             'active',
@@ -1020,13 +1041,15 @@ const DockSettings = GObject.registerClass({
             Gio.SettingsBindFlags.DEFAULT);
 
         // Running indicators
-        this._builder.get_object('running_indicators_combo').set_active(
-            this._settings.get_enum('running-indicator-style')
+        this._builder.get_object('running_indicators_combo').set_active_id(
+            String(this._settings.get_enum('running-indicator-style'))
         );
         this._builder.get_object('running_indicators_combo').connect(
             'changed',
             widget => {
-                this._settings.set_enum('running-indicator-style', widget.get_active());
+                if (widget.get_active_id() !== null &&
+                    Number(widget.get_active_id()) !== this._settings.get_enum('running-indicator-style'))
+                    this._settings.set_enum('running-indicator-style', Number(widget.get_active_id()));
             }
         );
 
@@ -1034,12 +1057,16 @@ const DockSettings = GObject.registerClass({
             this._builder.get_object('running_indicators_advance_settings_button').set_sensitive(false);
 
         this._settings.connect('changed::running-indicator-style', () => {
+            this._builder.get_object('running_indicators_combo').set_active_id(
+                String(this._settings.get_enum('running-indicator-style')));
             if (this._settings.get_enum('running-indicator-style') === RunningIndicatorStyle.DEFAULT)
                 this._builder.get_object('running_indicators_advance_settings_button').set_sensitive(false);
             else
                 this._builder.get_object('running_indicators_advance_settings_button').set_sensitive(true);
         });
 
+        this._activityPreferences = activityPreferences(this._settings, __);
+        this._builder.get_object('running_dots').attach(this._activityPreferences.box, 0, 2, 2, 1);
         // Create dialog for running indicators advanced settings
         this._builder.get_object('running_indicators_advance_settings_button').connect('clicked', () => {
             const dialog = new Gtk.Dialog({
@@ -1133,27 +1160,14 @@ const DockSettings = GObject.registerClass({
             return `${Math.round(value * 100)}%`;
         });
 
-        if (this._settings.get_enum('transparency-mode') !== TransparencyMode.FIXED)
-            this._builder.get_object('custom_opacity_scale').set_sensitive(false);
-
-        this._settings.connect('changed::transparency-mode', () => {
-            if (this._settings.get_enum('transparency-mode') !== TransparencyMode.FIXED)
-                this._builder.get_object('custom_opacity_scale').set_sensitive(false);
-            else
-                this._builder.get_object('custom_opacity_scale').set_sensitive(true);
-        });
-
-        if (this._settings.get_enum('transparency-mode') !== TransparencyMode.DYNAMIC)
-            this._builder.get_object('dynamic_opacity_button').set_sensitive(false);
-
-
-        this._settings.connect('changed::transparency-mode', () => {
-            if (this._settings.get_enum('transparency-mode') !== TransparencyMode.DYNAMIC)
-                this._builder.get_object('dynamic_opacity_button').set_sensitive(false);
-
-            else
-                this._builder.get_object('dynamic_opacity_button').set_sensitive(true);
-        });
+        const syncOpacityControls = () => {
+            const mode = this._settings.get_enum('transparency-mode');
+            this._builder.get_object('custom_opacity').visible = mode === TransparencyMode.FIXED;
+            this._builder.get_object('dynamic_opacity_button').visible = mode === TransparencyMode.DYNAMIC;
+        };
+        syncOpacityControls();
+        this._opacityControlsSignal = this._settings.connect('changed::transparency-mode',
+            syncOpacityControls);
 
         // Create dialog for transparency advanced settings
         this._builder.get_object('dynamic_opacity_button').connect('clicked', () => {
@@ -1211,6 +1225,8 @@ const DockSettings = GObject.registerClass({
             dialog.present();
         });
 
+
+        this._conditionalPreferences = conditionalPreferences(this._builder, this._settings);
 
         this._settings.bind('unity-backlit-items',
             this._builder.get_object('unity_backlit_items_switch'),

@@ -1,10 +1,12 @@
 // -*- mode: js; js-indent-level: 4; indent-tabs-mode: nil -*-
 import {visibleApp} from './launcherVisibility.js';
+import {DockActivityMode} from './activityIndicator.js';
 
 import {
     Clutter,
     Gio,
     GLib,
+    Meta,
     GObject,
     Shell,
     St,
@@ -63,7 +65,12 @@ class DockDashItemContainer extends Dash.DashItemContainer {
     }
 
     showLabel() {
-        return AppIcons.itemShowLabel.call(this);
+        if (Docking.DockManager.settings.hideTooltip) {
+            this.label.hide();
+            return;
+        }
+        if (!this.child?._activityTooltipOwner)
+            AppIcons.itemShowLabel.call(this);
     }
 
     // we override the method show taken from:
@@ -158,6 +165,7 @@ export const DockDash = GObject.registerClass({
         this._shownInitially = false;
         this._initializeIconSize(this.iconSize);
         this._signalsHandler = new Utils.GlobalSignalsHandler(this);
+        this.activityMode = new DockActivityMode(Docking.DockManager.settings, this);
 
         this._separator = null;
 
@@ -269,7 +277,13 @@ export const DockDash = GObject.registerClass({
         this.add_child(this._background);
         this.add_child(this._dashContainer);
 
-        this._workId = Main.initializeDeferredWork(this._box, () => this._redisplay());
+        // Own the source: a failed callback in Shell 46's shared deferred queue
+        // can strand all subsequent work, even while icon indicators stay live.
+        this._box.connect('notify::mapped', () => {
+            if (this._box.mapped)
+                this._queueRedisplay();
+        });
+        this._queueRedisplay();
 
         this._shellSettings = new Gio.Settings({
             schema_id: 'org.gnome.shell',
@@ -355,10 +369,13 @@ export const DockDash = GObject.registerClass({
 
         this._signalsHandler.add([
             global.stage, 'captured-event', (_stage, event) => {
-                if (event.type() === Clutter.EventType.MOTION)
+                if (event.type() === Clutter.EventType.MOTION) {
+                    this._updateActivityHover();
                     this._updatePaddingHover(event);
-                else if (event.type() === Clutter.EventType.LEAVE)
+                } else if (event.type() === Clutter.EventType.LEAVE) {
+                    this._updateActivityHover();
                     this._clearPaddingHover();
+                }
                 return Clutter.EVENT_PROPAGATE;
             },
         ], [Main.overview, 'hiding', () => this._clearPaddingHover()],
@@ -369,6 +386,11 @@ export const DockDash = GObject.registerClass({
             () => this._clearPaddingHover()]);
 
         this.connect('destroy', this._onDestroy.bind(this));
+    }
+
+    _updateActivityHover(clear = false) {
+        if (!this._destroying)
+            this.activityMode.updatePointer(clear || Main.overview._inWindowDrag);
     }
 
     _clearPaddingHover() {
@@ -458,6 +480,20 @@ export const DockDash = GObject.registerClass({
     }
 
     _onDestroy() {
+        this.prepareDestroy();
+    }
+
+    prepareDestroy() {
+        if (this._destroying)
+            return;
+        this._destroying = true;
+        this.activityMode.destroy();
+        this._scrollView._d2dDestroying = true;
+        this._signalsHandler.destroy();
+        if (this._redisplayLater) {
+            Utils.laterRemove(this._redisplayLater);
+            this._redisplayLater = 0;
+        }
         this._clearPaddingHover();
         this.iconAnimator.destroy();
 
@@ -466,10 +502,7 @@ export const DockDash = GObject.registerClass({
             delete this._requiresVisibilityTimeout;
         }
 
-        if (this._ensureActorVisibilityTimeoutId) {
-            GLib.source_remove(this._ensureActorVisibilityTimeoutId);
-            delete this._ensureActorVisibilityTimeoutId;
-        }
+        this._clearVisibilityWatch();
 
         if (this._showLabelTimeoutId) {
             GLib.source_remove(this._showLabelTimeoutId);
@@ -502,8 +535,20 @@ export const DockDash = GObject.registerClass({
         return Dash.Dash.prototype._appIdListToHash.call(this, ...args);
     }
 
-    _queueRedisplay(...args) {
-        return Dash.Dash.prototype._queueRedisplay.call(this, ...args);
+    _queueRedisplay() {
+        if (this._destroying || this._redisplayLater)
+            return;
+        this._redisplayLater = Utils.laterAdd(Meta.LaterType.BEFORE_REDRAW, () => {
+            this._redisplayLater = 0;
+            if (this._destroying)
+                return GLib.SOURCE_REMOVE;
+            try {
+                this._redisplay();
+            } catch (error) {
+                logError(error, 'Dash-to-Dock launcher reconciliation failed');
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _hookUpLabel(...args) {
@@ -660,21 +705,29 @@ export const DockDash = GObject.registerClass({
         return Clutter.EVENT_STOP;
     }
 
-    _ensureItemVisibility(actor) {
-        if (actor?.hover) {
-            const destroyId =
-                actor.connect('destroy', () => this._ensureItemVisibility(null));
-            this._ensureActorVisibilityTimeoutId = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT, 100, () => {
-                    actor.disconnect(destroyId);
-                    ensureActorVisibleInScrollView(this._scrollView, actor);
-                    this._ensureActorVisibilityTimeoutId = 0;
-                    return GLib.SOURCE_REMOVE;
-                });
-        } else if (this._ensureActorVisibilityTimeoutId) {
+    _clearVisibilityWatch() {
+        if (this._ensureActorVisibilityTimeoutId)
             GLib.source_remove(this._ensureActorVisibilityTimeoutId);
-            this._ensureActorVisibilityTimeoutId = 0;
+        this._ensureActorVisibilityTimeoutId = 0;
+        if (this._visibilityWatch) {
+            const [actor, id] = this._visibilityWatch;
+            this._visibilityWatch = null;
+            actor.disconnect(id);
         }
+    }
+
+    _ensureItemVisibility(actor) {
+        this._clearVisibilityWatch();
+        if (this._destroying || !actor?.hover)
+            return;
+        this._visibilityWatch = [actor, actor.connect('destroy', () => this._ensureItemVisibility(null))];
+        this._ensureActorVisibilityTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            this._ensureActorVisibilityTimeoutId = 0;
+            this._clearVisibilityWatch();
+            if (!this._destroying)
+                ensureActorVisibleInScrollView(this._scrollView, actor);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _getAppRawStableSequence(app) {
@@ -762,6 +815,8 @@ export const DockDash = GObject.registerClass({
 
     _createAppItem(app) {
         const appIcon = new AppIcons.makeAppIcon(app, this._monitorIndex, this.iconAnimator);
+        appIcon.activityMode = this.activityMode;
+        appIcon._indicator?._running.setDockMode?.(this.activityMode);
 
         if (appIcon._draggable) {
             appIcon._draggable.connect('drag-begin', () => {
@@ -1597,6 +1652,8 @@ export const DockDash = GObject.registerClass({
  * @param actor
  */
 function ensureActorVisibleInScrollView(scrollView, actor) {
+    if (scrollView._d2dDestroying)
+        return [0, 0];
     // access to scrollView.[hv]scroll was deprecated in gnome 46
     // instead, adjustment can be accessed directly
     // keep old way for backwards compatibility (gnome <= 45)
