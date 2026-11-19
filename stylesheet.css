@@ -1534,41 +1534,54 @@
   border-right-width: 1px;
   margin: 32px 0px; }
 
-#dashtodockContainer .metro .overview-icon {
+#dashtodockContainer .metro .overview-icon,
+#dashtodockContainer .activity-idle-metro .overview-icon {
   border-radius: 0px; }
 
 #dashtodockContainer.bottom .metro.running2.focused,
-#dashtodockContainer.top .metro.running2.focused {
+#dashtodockContainer.top .metro.running2.focused,
+#dashtodockContainer.bottom .activity-idle-metro.running2.focused,
+#dashtodockContainer.top .activity-idle-metro.running2.focused {
   background-image: url("./media/highlight_stacked_bg.svg");
   background-position: 0px 0px;
   background-size: contain; }
 
 #dashtodockContainer.left .metro.running2.focused,
-#dashtodockContainer.right .metro.running2.focused {
+#dashtodockContainer.right .metro.running2.focused,
+#dashtodockContainer.left .activity-idle-metro.running2.focused,
+#dashtodockContainer.right .activity-idle-metro.running2.focused {
   background-image: url("./media/highlight_stacked_bg_h.svg");
   background-position: 0px 0px;
   background-size: contain; }
 
 #dashtodockContainer.bottom .metro.running3.focused,
-#dashtodockContainer.top .metro.running3.focused {
+#dashtodockContainer.top .metro.running3.focused,
+#dashtodockContainer.bottom .activity-idle-metro.running3.focused,
+#dashtodockContainer.top .activity-idle-metro.running3.focused {
   background-image: url("./media/highlight_stacked_bg.svg");
   background-position: 0px 0px;
   background-size: contain; }
 
 #dashtodockContainer.left .metro.running3.focused,
-#dashtodockContainer.right .metro.running3.focused {
+#dashtodockContainer.right .metro.running3.focused,
+#dashtodockContainer.left .activity-idle-metro.running3.focused,
+#dashtodockContainer.right .activity-idle-metro.running3.focused {
   background-image: url("./media/highlight_stacked_bg_h.svg");
   background-position: 0px 0px;
   background-size: contain; }
 
 #dashtodockContainer.bottom .metro.running4.focused,
-#dashtodockContainer.top .metro.running4.focused {
+#dashtodockContainer.top .metro.running4.focused,
+#dashtodockContainer.bottom .activity-idle-metro.running4.focused,
+#dashtodockContainer.top .activity-idle-metro.running4.focused {
   background-image: url("./media/highlight_stacked_bg.svg");
   background-position: 0px 0px;
   background-size: contain; }
 
 #dashtodockContainer.left .metro.running4.focused,
-#dashtodockContainer.right .metro.running4.focused {
+#dashtodockContainer.right .metro.running4.focused,
+#dashtodockContainer.left .activity-idle-metro.running4.focused,
+#dashtodockContainer.right .activity-idle-metro.running4.focused {
   background-image: url("./media/highlight_stacked_bg_h.svg");
   background-position: 0px 0px;
   background-size: contain; }

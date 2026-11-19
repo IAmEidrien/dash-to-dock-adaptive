@@ -13,3 +13,7 @@ _build
 !locale/**/LC_MESSAGES/dashtodock.mo
 dash-to-dock-adaptive@eidrien.local*.zip
 .DS_Store
+
+# Python sampling worker/test bytecode.
+__pycache__/
+*.pyc

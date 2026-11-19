@@ -498,20 +498,25 @@ $dock_style_modes: null, shrink, extended, extended-shrink;
     margin: 32px 0px;
 }
 
-#dashtodockContainer .metro .overview-icon {
+#dashtodockContainer .metro .overview-icon,
+#dashtodockContainer .activity-idle-metro .overview-icon {
     border-radius: 0px;
 }
 
 @for $i from 2 through 4 {
     #dashtodockContainer.bottom .metro.running#{$i}.focused,
-    #dashtodockContainer.top .metro.running#{$i}.focused {
+    #dashtodockContainer.top .metro.running#{$i}.focused,
+    #dashtodockContainer.bottom .activity-idle-metro.running#{$i}.focused,
+    #dashtodockContainer.top .activity-idle-metro.running#{$i}.focused {
         background-image: url("./media/highlight_stacked_bg.svg");
         background-position: 0px 0px;
         background-size: contain;
     }
 
     #dashtodockContainer.left .metro.running#{$i}.focused,
-    #dashtodockContainer.right .metro.running#{$i}.focused {
+    #dashtodockContainer.right .metro.running#{$i}.focused,
+    #dashtodockContainer.left .activity-idle-metro.running#{$i}.focused,
+    #dashtodockContainer.right .activity-idle-metro.running#{$i}.focused {
         background-image: url("./media/highlight_stacked_bg_h.svg");
         background-position: 0px 0px;
         background-size: contain;

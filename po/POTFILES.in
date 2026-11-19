@@ -5,3 +5,5 @@ appIconIndicators.js
 appIconsDecorator.js
 locations.js
 Settings.ui
+
+activityPrefs.js

@@ -9,6 +9,12 @@ LICENSES/GPL-3.0-or-later.txt. Other per-file grants
 remain in force; this is not a claim that every repository file is GPLv2.
 Source: https://github.com/micheleg/dash-to-dock
 
+The independent CPU sampling, activity renderer/preferences and contextual
+preference helpers (`cpu_activity.py`, `cpuActivity.js`, `activityIndicator.js`,
+`activityPrefs.js`, `conditionalPrefs.js`) and their new tests carry MIT SPDX
+notices. The complete grant is in `LICENSES/MIT.txt`, also included in packages.
+Changes to existing upstream-derived files retain those files' existing grants.
+
 ## GNOME distribution
 
 Where original sources are marked MIT, that grant does not cover GNOME Shell or other

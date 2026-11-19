@@ -1,4 +1,4 @@
-# Dash to Dock 110 — Adaptive 10
+# Dash to Dock 110 — Adaptive 11
 
 Experimental GNOME Shell fork based on the official Dash to Dock 110 extension
 release (`extensions.gnome.org-v110`, upstream commit `2dfae34`). All changes
@@ -8,6 +8,62 @@ its separate snapshot history. See GIT-WORKFLOW.md for migrating an installed
 checkout without deleting that history or changing personal settings.
 
 ## Changes
+
+- Hidden/sliding docks suspend Activity sampling and animation, clear old CPU
+  state and resume with fresh measurements. Other visible docks retain their
+  shared worker and polling cadence. Autohide and intellihide use the existing
+  dock-state/mapped lifecycle.
+- After revealing a dock, nonzero-delay Activity activation is disarmed until the
+  pointer leaves all indicator strips. An icon interior or ordinary dock control
+  can rearm it without leaving the dock. Zero-delay Activity remains active only
+  while shown. No new user-facing setting is introduced.
+
+
+- Activity mode takes one extra startup sample **250 ms after its baseline reply**,
+  then resumes the saved polling interval. Startup timers and in-flight replies
+  are cancelled when the monitoring session ends.
+- The rounded Activity capsule now shares **Solid's thickness and edge padding**.
+  Idle **Line** uses Solid's renderer, and idle **Metro** adds the existing flat
+  launcher style and multi-window shading. Saved Dot/Line values are preserved.
+
+
+- The experimental indicator style is now **Activity (Experimental)**. Activity
+  mode starts from any running indicator's CPU-tooltip region, then stays active
+  for every running indicator in that dock until the pointer leaves the dock.
+  Ordinary icon hover does not start it. Each dock has its own dwell and state;
+  the existing asynchronous sampler remains shared.
+- Animation duration now defaults to **1.0 second**, with **0–5 seconds** adjustable
+  in **0.1-second** steps. Existing millisecond keys and saved values are retained.
+  Lightweight time-aware visual smoothing and a small deadband reduce jitter;
+  larger increases remain responsive. Zero duration disables both, and numerical
+  tooltips always retain unsmoothed CPU measurements.
+
+
+- Adaptive 11 follow-up fixes frozen CPU/idle geometry with animations enabled
+  by attaching its timeline to the drawing actor's frame clock. Indicator hover
+  extends toward the monitor edge. **Hide application tooltip** suppresses the
+  CPU tooltip's app title and prevents the ordinary title from reappearing.
+  Dwell and initial sampling show **Waiting…**, distinct from actual failure.
+
+
+- **Adaptive 11** adds **Activity (Experimental)** as the first running-indicator
+  style, with dot-to-line CPU activity, shared asynchronous sampling, numeric
+  indicator tooltips and conditional preferences. Existing indicator styles and
+  saved settings remain available. See [ADAPTIVE-CPU.md](ADAPTIVE-CPU.md) for the
+  experimental contract, process-attribution limitations and native validation.
+- Dependent preference controls now disappear instead of remaining greyed out.
+  This includes monitor selection when showing on all monitors, opacity controls,
+  hover details and advanced customization. Hidden values are retained.
+- **Scroll switch delay (ms)** now governs both window and workspace scroll
+  switching; it is hidden when scrolling is disabled. The existing
+  `workspace-scroll-delay` key and saved value are retained; `0` means no delay.
+
+
+- Adaptive 10.1 fixes dock teardown and transparency-handler ownership, and
+  gives launcher reconciliation a dock-owned redraw source. DND still controls
+  notification/emblem indicators; launcher order and interaction policy are
+  unchanged. See [LIFECYCLE-REGRESSION.md](LIFECYCLE-REGRESSION.md) for the native
+  comparison, failure-injection test and remaining diagnostic uncertainty.
 
 - Overview hover navigation now switches workspace by default, with **Also focus
   the application's window** as a separate, default-off option. Existing hover
@@ -57,7 +113,7 @@ checkout without deleting that history or changing personal settings.
 - Adds **Adaptive launcher ordering** (enabled by default). Running applications follow their earliest relevant workspace, then GNOME Shell `AppUsage.compare()` within each workspace, followed by the oldest relevant window's stable sequence and app ID/name. Sticky-only apps follow the active workspace.
 - Running favorites participate in the dynamic running section; favorites that are not currently relevant/running remain pinned before it. The favorite separator follows the actual static-favorite count.
 - Adaptive ordering rejects internal dock icon reorder drops. Existing dock icons may still enter GNOME's drag state; the drop policy avoids version-specific private `Draggable` internals.
-- Replaces Dash to Dock's fixed 250 ms workspace-scroll dead time with **Workspace switch delay (ms)**. Default: **10 ms**. `0` disables throttling.
+- Replaces Dash to Dock's fixed 250 ms scroll-switch dead time with **Scroll switch delay (ms)**. Default: **10 ms**. `0` disables throttling.
 - Preserves upstream behavior when adaptive ordering is disabled.
 - Adds **Switch workspace on hover in Overview**. This is app-centric and works with grouped icons. A configurable 0–2000 ms delay controls dwell time; `0` navigates immediately. Explicit window focus is optional and defaults off.
 - For multi-window applications, hover focus preserves the already-focused window when applicable, otherwise chooses the most-recently-used window on the active workspace, then the most-recently-used window anywhere.

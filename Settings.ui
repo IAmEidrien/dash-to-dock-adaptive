@@ -908,10 +908,6 @@
                                 <signal name="value-changed" handler="preview_size_scale_value_changed_cb" />
                               </object>
                             </child>
-                            <layout>
-                              <property name="column">0</property>
-                              <property name="row">1</property>
-                            </layout>
                           </object>
                         </child>
                       </object>
@@ -2059,7 +2055,7 @@
                                 <property name="can_focus">0</property>
                                 <property name="hexpand">1</property>
                                 <property name="halign">start</property>
-                                <property name="label" translatable="yes">Workspace switch delay (ms)</property>
+                                <property name="label" translatable="yes">Scroll switch delay (ms)</property>
                                 <layout>
                                   <property name="column">0</property>
                                   <property name="row">2</property>
@@ -2071,7 +2067,7 @@
                                 <property name="can_focus">0</property>
                                 <property name="hexpand">1</property>
                                 <property name="halign">start</property>
-                                <property name="label" translatable="yes">Minimum dead time between workspace switches while scrolling the dock. 0 disables throttling.</property>
+                                <property name="label" translatable="yes">Minimum dead time between window or workspace switches while scrolling the dock. 0 disables throttling.</property>
                                 <property name="wrap">1</property>
                                 <property name="xalign">0</property>
                                 <style>
@@ -2374,16 +2370,17 @@
                                       <object class="GtkComboBoxText" id="running_indicators_combo">
                                         <property name="can_focus">0</property>
                                         <items>
-                                          <item translatable="yes">Default</item>
-                                          <item translatable="yes">Dots</item>
-                                          <item translatable="yes">Squares</item>
-                                          <item translatable="yes">Dashes</item>
-                                          <item translatable="yes">Segmented</item>
-                                          <item translatable="yes">Solid</item>
-                                          <item translatable="yes">Ciliora</item>
-                                          <item translatable="yes">Metro</item>
-                                          <item translatable="yes">Binary</item>
-                                          <item translatable="yes">Dot</item>
+                                          <item id="10" translatable="yes">Activity (Experimental)</item>
+                                          <item id="0" translatable="yes">Default</item>
+                                          <item id="1" translatable="yes">Dots</item>
+                                          <item id="2" translatable="yes">Squares</item>
+                                          <item id="3" translatable="yes">Dashes</item>
+                                          <item id="4" translatable="yes">Segmented</item>
+                                          <item id="5" translatable="yes">Solid</item>
+                                          <item id="6" translatable="yes">Ciliora</item>
+                                          <item id="7" translatable="yes">Metro</item>
+                                          <item id="8" translatable="yes">Binary</item>
+                                          <item id="9" translatable="yes">Dot</item>
                                         </items>
                                       </object>
                                     </child>
